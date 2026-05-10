@@ -19,26 +19,64 @@ function lerp(inp: number[], out: number[], v: number): number {
   return out[out.length - 1];
 }
 
-// ── Sinus keyframes — glow/contraction peak COINCIDES with R-wave (phase 0.285)
-// ECG generator places:  P peak @ 0.13,  Q @ 0.265,  R peak @ 0.285,  T peak @ 0.52
-// Atria:  contract with P wave, relax before QRS
-const laP = [0.00, 0.12, 0.145, 0.195, 0.280, 0.72, 1.00];
-const laS = [1.00, 1.00, 0.830, 0.860, 1.000, 1.03, 1.00];
-const raP = [0.00, 0.10, 0.130, 0.180, 0.265, 0.70, 1.00];
-const raS = [1.00, 1.00, 0.840, 0.870, 1.000, 1.03, 1.00];
-// Ventricles: glow spikes sharply at QRS start (0.255) and PEAKS at R peak (0.285)
-const vP  = [0.00, 0.13, 0.255, 0.285, 0.340, 0.480, 0.620, 0.840, 1.00];
-const lvS = [1.00, 1.00, 1.000, 0.800, 0.760, 0.810, 0.920, 1.020, 1.00];
-const rvS = [1.00, 1.00, 1.000, 0.840, 0.810, 0.845, 0.935, 1.010, 1.00];
-const gSz = [3,    3,    8,     22,    22,    14,    6,     3,     3   ];
-const gAl = [0.22, 0.22, 0.55,  1.00,  0.95,  0.55,  0.24,  0.22,  0.22];
+// Scale/glow OUTPUT values — never change with heart rate
+// Ventricular outputs (8 keypoints: diastole → QRS-start → R-peak → maxCon → midRlx → nearBase → base → end)
+const lvOut = [1.00, 1.000, 0.820, 0.760, 0.820, 0.940, 1.020, 1.00];
+const rvOut = [1.00, 1.000, 0.850, 0.810, 0.850, 0.950, 1.010, 1.00];
+const gSzOut= [3,    8,     22,    22,    14,    6,     3,     3   ];
+const gAlOut= [0.22, 0.55,  1.00,  0.95,  0.55,  0.24,  0.22,  0.22];
+// VT outputs (wide QRS — starts earlier at p2)
+const vtLvOut=[1.00, 0.860, 0.780, 0.760, 0.820, 0.930, 1.010, 1.00];
+const vtRvOut=[1.00, 0.890, 0.820, 0.800, 0.840, 0.940, 1.010, 1.00];
+const vtGSOut=[3,    12,    22,    22,    14,    6,     3,     3   ];
+const vtGAOut=[0.2,  0.65,  1.0,   0.95,  0.55,  0.24,  0.2,   0.2 ];
 
-// ── VT keyframes — wide QRS: glow peaks at phase 0.285, longer decay ──────────
-const vtP  = [0.00, 0.10, 0.220, 0.285, 0.370, 0.490, 0.650, 0.870, 1.00];
-const vtLV = [1.00, 1.00, 0.860, 0.780, 0.760, 0.810, 0.920, 1.010, 1.00];
-const vtRV = [1.00, 1.00, 0.890, 0.820, 0.800, 0.840, 0.930, 1.010, 1.00];
-const vtGS = [3,    3,    12,    22,    22,    14,    6,     3,     3   ];
-const vtGA = [0.2,  0.2,  0.65,  1.0,   0.95,  0.55,  0.24,  0.2,   0.2 ];
+// Atrial outputs (contract with P wave)
+const laOut = [1.00, 1.00, 0.840, 0.870, 1.000, 1.030, 1.00];
+const raOut = [1.00, 1.00, 0.850, 0.875, 1.000, 1.025, 1.00];
+
+// Build phase-position arrays for a given heart rate.
+// Systole duration is fixed at ~380 ms so contraction speed stays realistic
+// at any HR; only the diastolic pause changes.
+function buildKeyframes(hr: number) {
+  const bd       = 60000 / hr;                       // ms per beat
+  const vSys     = Math.min(380 / bd, 0.72);         // ventricular systole fraction
+  const aSys     = Math.min(110 / bd, 0.13);         // atrial systole fraction
+  const q = 0.255, r = 0.285;
+
+  // Ventricular: [diastole, QRSstart, Rpeak, maxCon, midRlx, nearBase, base, end]
+  const vP = [
+    0,
+    q,
+    r,
+    r + vSys * 0.25,
+    r + vSys * 0.55,
+    r + vSys * 0.85,
+    Math.min(r + vSys, 0.98),
+    1.0,
+  ];
+
+  // VT starts contracting earlier (wide QRS begins at 0.22)
+  const vtQ = 0.220;
+  const vtSys = Math.min(400 / bd, 0.75);
+  const vtP = [
+    0,
+    vtQ,
+    r,
+    r + vtSys * 0.25,
+    r + vtSys * 0.55,
+    r + vtSys * 0.85,
+    Math.min(r + vtSys, 0.98),
+    1.0,
+  ];
+
+  // Atrial: [0, P-start, P-peak, maxCon, relaxed, passive-fill, end]
+  const pa = 0.120;
+  const laP = [0, pa, pa + aSys * 0.4, pa + aSys * 0.7, pa + aSys, 0.72, 1.0];
+  const raP = [0, pa - 0.010, (pa-0.01) + aSys*0.4, (pa-0.01)+aSys*0.7, (pa-0.01)+aSys, 0.70, 1.0];
+
+  return { vP, vtP, laP, raP };
+}
 
 export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
   // ── All motion values (hooks must be unconditional) ───────────────────────
@@ -54,6 +92,14 @@ export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
 
   // ── Single rAF loop — drives everything based on rhythm ──────────────────
   useEffect(() => {
+    // Build keyframe PHASE arrays once per heart-rate change.
+    // Output value arrays (lvOut, gSzOut, …) are constant — only the timing changes.
+    const { vP, vtP, laP, raP } = buildKeyframes(heartRate);
+
+    // Ejection-fraction helper (1 inside systole peak, 0 elsewhere) — same length as vP
+    const ejVOut = [0, 0, 0.5, 1, 0.5, 0, 0, 0];
+    const ejVtOut= [0, 0, 0.5, 1, 0.5, 0, 0, 0];
+
     let rafId: number;
 
     const tick = () => {
@@ -69,51 +115,42 @@ export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
         raScale.set(1 / t);
         lvScale.set(0.95 + 0.018 * Math.sin(2 * Math.PI * p1 * 3));
         rvScale.set(0.95 + 0.016 * Math.sin(2 * Math.PI * p2 * 2.3 + 1.2));
-        lvFill.set("#6B1111");            // dark desaturated — no oxygenation
+        lvFill.set("#6B1111");
         glowSize.set(5 + 2 * Math.sin(2 * Math.PI * p1));
         glowAlpha.set(0.20);
 
       } else {
         // Sync to the identical 15-second rolling buffer the ECG canvas reads.
-        // ECG canvas position: ((now % 15000) / 15000) * 900 samples
-        // Beat length in that sample space: 3600 / heartRate samples
-        // → phase is fractional position within the current beat, 0–1.
         const bs     = 3600 / heartRate;
         const sample = ((now % 15000) / 15000) * 900;
         const phase  = (sample % bs) / bs;
 
         // ── Atria ───────────────────────────────────────────────────────────
         if (rhythmType === "AF") {
-          // Atrial fibrillation: rapid low-amplitude flutter (~5.5 Hz)
           const ap = (now % 180) / 180;
           laScale.set(1 + 0.046 * Math.sin(2 * Math.PI * ap));
           raScale.set(1 + 0.040 * Math.sin(2 * Math.PI * ap + 0.5));
         } else if (rhythmType === "VT" || rhythmType === "SVT") {
-          // AV dissociation (VT) or no visible atrial kick (SVT): atria static
           laScale.set(1.0);
           raScale.set(1.0);
         } else {
-          // Sinus family: normal atrial contraction with P wave
-          laScale.set(lerp(laP, laS, phase));
-          raScale.set(lerp(raP, raS, phase));
+          laScale.set(lerp(laP, laOut, phase));
+          raScale.set(lerp(raP, raOut, phase));
         }
 
-        // ── Ventricles ───────────────────────────────────────────────────────
+        // ── Ventricles (fixed-duration systole via HR-scaled phase arrays) ──
         if (rhythmType === "VT") {
-          lvScale.set(lerp(vtP, vtLV, phase));
-          rvScale.set(lerp(vtP, vtRV, phase));
-          glowSize.set(lerp(vtP, vtGS, phase));
-          glowAlpha.set(lerp(vtP, vtGA, phase));
-          lvFill.set(lerp(vtP, [0, 0, 0.3, 1, 0.7, 0, 0, 0], phase) > 0.5
-            ? "#ff4a3a" : "#c0392b");
+          lvScale.set(lerp(vtP, vtLvOut, phase));
+          rvScale.set(lerp(vtP, vtRvOut, phase));
+          glowSize.set(lerp(vtP, vtGSOut, phase));
+          glowAlpha.set(lerp(vtP, vtGAOut, phase));
+          lvFill.set(lerp(vtP, ejVtOut, phase) > 0.5 ? "#ff4a3a" : "#c0392b");
         } else {
-          lvScale.set(lerp(vP, lvS, phase));
-          rvScale.set(lerp(vP, rvS, phase));
-          glowSize.set(lerp(vP, gSz, phase));
-          glowAlpha.set(lerp(vP, gAl, phase));
-          // LV brightens during ejection
-          const ejecting = lerp(vP, [0,0,0,0.5,1,0.5,0,0,0], phase);
-          lvFill.set(ejecting > 0.5 ? "#ff5535" : "#e74c3c");
+          lvScale.set(lerp(vP, lvOut, phase));
+          rvScale.set(lerp(vP, rvOut, phase));
+          glowSize.set(lerp(vP, gSzOut, phase));
+          glowAlpha.set(lerp(vP, gAlOut, phase));
+          lvFill.set(lerp(vP, ejVOut, phase) > 0.5 ? "#ff5535" : "#e74c3c");
         }
       }
 
