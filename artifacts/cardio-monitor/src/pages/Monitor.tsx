@@ -2,152 +2,179 @@ import { useMemo } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { HeartAnimation } from "@/components/HeartAnimation";
 
-// Helper to generate a Gaussian bump
-const gaussian = (x: number, center: number, width: number, height: number) => {
-  return height * Math.exp(-Math.pow(x - center, 2) / (2 * Math.pow(width, 2)));
-};
+const gaussian = (x: number, center: number, width: number, height: number) =>
+  height * Math.exp(-Math.pow(x - center, 2) / (2 * Math.pow(width, 2)));
+
+const SAMPLES = 900;  // 15s × 60fps
+const BEATS = 18;     // 72 bpm
+const SPB = SAMPLES / BEATS; // samples per beat
 
 export default function Monitor() {
-  const SAMPLES = 900; // 15 seconds at 60fps
-  const BEATS = 18; // 72 bpm for 15 seconds
-  const SAMPLES_PER_BEAT = SAMPLES / BEATS;
-
   const { ecgData, abpData, coData } = useMemo(() => {
-    const ecg = new Array(SAMPLES).fill(0);
-    const abp = new Array(SAMPLES).fill(0);
-    const co = new Array(SAMPLES).fill(0);
+    const ecg = new Float32Array(SAMPLES);
+    const abp = new Float32Array(SAMPLES);
+    const co  = new Float32Array(SAMPLES);
 
     for (let i = 0; i < SAMPLES; i++) {
-      const beatProgress = (i % SAMPLES_PER_BEAT) / SAMPLES_PER_BEAT;
-      
-      // ECG generation
-      let ecgVal = 0;
-      // P wave
-      ecgVal += gaussian(beatProgress, 0.15, 0.02, 0.15);
-      // QRS complex
-      ecgVal += gaussian(beatProgress, 0.28, 0.005, -0.15); // Q
-      ecgVal += gaussian(beatProgress, 0.30, 0.008, 1.0);  // R
-      ecgVal += gaussian(beatProgress, 0.32, 0.006, -0.25); // S
-      // T wave
-      ecgVal += gaussian(beatProgress, 0.55, 0.04, 0.25);
-      ecg[i] = ecgVal;
+      const bp = (i % SPB) / SPB; // beat progress 0→1
 
-      // ABP generation (starts rising after QRS)
-      let abpVal = 80; // Baseline diastolic
-      if (beatProgress > 0.32 && beatProgress < 0.8) {
-        // Systolic upstroke and peak
-        abpVal += gaussian(beatProgress, 0.45, 0.05, 40);
-        // Dicrotic notch
-        if (beatProgress > 0.55 && beatProgress < 0.6) {
-          abpVal -= 5;
-        }
-        // Diastolic runoff
-        abpVal += gaussian(beatProgress, 0.65, 0.08, 15);
-      }
-      abp[i] = abpVal;
+      // --- ECG (normalised −0.3 → 1.0) ---
+      let e = 0;
+      // isoelectric baseline
+      e += gaussian(bp, 0.13, 0.018, 0.18);   // P wave
+      e += gaussian(bp, 0.265, 0.006, -0.18); // Q dip
+      e += gaussian(bp, 0.285, 0.009, 1.15);  // R spike
+      e += gaussian(bp, 0.305, 0.007, -0.32); // S dip
+      e += gaussian(bp, 0.52,  0.045, 0.28);  // T wave
+      // U wave (small)
+      e += gaussian(bp, 0.68,  0.022, 0.04);
+      ecg[i] = e;
 
-      // CO generation
-      let coVal = 0;
-      if (beatProgress > 0.35 && beatProgress < 0.7) {
-        coVal = gaussian(beatProgress, 0.5, 0.08, 5.0);
-      }
-      co[i] = coVal;
+      // --- Arterial BP (mmHg, 80→120) ---
+      let a = 78;
+      // systolic upstroke immediately after QRS
+      a += gaussian(bp, 0.38, 0.048, 42);
+      // dicrotic notch (aortic valve closure)
+      a -= gaussian(bp, 0.54, 0.014, 8);
+      // diastolic run-off
+      a += gaussian(bp, 0.62, 0.07,  12);
+      abp[i] = a;
+
+      // --- Cardiac output pulse (Gaussian per beat) ---
+      co[i] = gaussian(bp, 0.44, 0.075, 5.2);
     }
 
-    return { ecgData: ecg, abpData: abp, coData: co };
+    return { ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co) };
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0e14] text-white p-4 font-mono select-none">
-      <header className="flex justify-between items-end mb-4 border-b border-gray-800 pb-2">
+    <div
+      className="flex flex-col bg-[#080c10] text-white font-mono select-none overflow-hidden"
+      style={{ height: "100dvh", maxHeight: "100dvh" }}
+      data-testid="monitor-root"
+    >
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <header
+        className="flex items-center justify-between px-3 py-1.5 border-b"
+        style={{ borderColor: "#0d2a0d", flexShrink: 0 }}
+      >
         <div>
-          <h1 className="text-xl font-bold tracking-widest text-gray-300">CLINICAL MONITOR</h1>
-          <div className="text-xs text-gray-500">ICU BED 04 - ADULT</div>
-        </div>
-        <div className="flex gap-6 text-sm">
-          <div className="flex flex-col items-end">
-            <span className="text-gray-500">SpO2</span>
-            <span className="text-2xl font-bold text-cyan-100">98%</span>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-gray-300">
+            CLINICAL MONITOR
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-gray-500">RR</span>
-            <span className="text-2xl font-bold text-white">14</span>
+          <div className="text-[9px] text-gray-600 tracking-widest">ICU BED 04 · ADULT</div>
+        </div>
+
+        {/* Compact vitals strip */}
+        <div className="flex gap-4 items-end">
+          <div className="flex flex-col items-end leading-none">
+            <span className="text-[9px] text-gray-500 tracking-widest">HR</span>
+            <span className="text-lg font-bold text-[#00ff41]">72</span>
+            <span className="text-[8px] text-[#00ff41] opacity-70">bpm</span>
+          </div>
+          <div className="flex flex-col items-end leading-none">
+            <span className="text-[9px] text-gray-500 tracking-widest">ABP</span>
+            <span className="text-lg font-bold text-[#ffd700]">120/80</span>
+            <span className="text-[8px] text-[#ffd700] opacity-70">mmHg (93)</span>
+          </div>
+          <div className="flex flex-col items-end leading-none">
+            <span className="text-[9px] text-gray-500 tracking-widest">CO</span>
+            <span className="text-lg font-bold text-[#00e5ff]">5.0</span>
+            <span className="text-[8px] text-[#00e5ff] opacity-70">L/min</span>
+          </div>
+          <div className="flex flex-col items-end leading-none">
+            <span className="text-[9px] text-gray-500 tracking-widest">SpO₂</span>
+            <span className="text-lg font-bold text-white">98</span>
+            <span className="text-[8px] text-gray-400 opacity-70">%</span>
+          </div>
+          <div className="flex flex-col items-end leading-none">
+            <span className="text-[9px] text-gray-500 tracking-widest">RR</span>
+            <span className="text-lg font-bold text-gray-300">14</span>
+            <span className="text-[8px] text-gray-500 opacity-70">/min</span>
           </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-4 h-[calc(100vh-100px)]">
-        {/* Waveforms Column */}
-        <div className="col-span-9 flex flex-col gap-4">
-          <div className="flex-1">
-            <WaveformCanvas 
-              data={ecgData} 
-              color="#00ff41" 
-              label="ECG II" 
-              value="72" 
-              unit="bpm" 
-              minY={-0.5} 
-              maxY={1.5} 
-            />
-          </div>
-          <div className="flex-1">
-            <WaveformCanvas 
-              data={abpData} 
-              color="#ffd700" 
-              label="ABP" 
-              value="120/80" 
-              unit="(93)" 
-              minY={60} 
-              maxY={140} 
-            />
-          </div>
-          <div className="flex-1">
-            <WaveformCanvas 
-              data={coData} 
-              color="#00e5ff" 
-              label="CO" 
-              value="5.0" 
-              unit="L/min" 
-              minY={0} 
-              maxY={6} 
-            />
-          </div>
+      {/* ── Heart + Labels row ──────────────────────────────────── */}
+      <div
+        className="flex items-center justify-center gap-4 px-3 py-1"
+        style={{ flexShrink: 0 }}
+      >
+        {/* Heart */}
+        <div
+          className="flex items-center justify-center rounded"
+          style={{ border: "1px solid #0d2a0d" }}
+          data-testid="heart-panel"
+        >
+          <HeartAnimation />
         </div>
 
-        {/* Side Panel Column */}
-        <div className="col-span-3 flex flex-col gap-4">
-          <div className="bg-[#0a0e14] border border-gray-800 rounded p-4 flex-1 flex flex-col justify-center">
-            <HeartAnimation />
+        {/* Educational labels */}
+        <div className="flex-1 text-[9px] leading-relaxed text-gray-400" data-testid="edu-labels">
+          <div className="mb-1.5">
+            <span className="text-[#00ff41] font-bold tracking-wider">ECG</span>
+            <ul className="mt-0.5 space-y-0.5 ml-2">
+              <li><span className="text-gray-500">P wave</span> — Atrial depolarization</li>
+              <li><span className="text-gray-500">QRS</span> — Ventricular depolarization</li>
+              <li><span className="text-gray-500">T wave</span> — Ventricular repolarization</li>
+              <li><span className="text-gray-500">U wave</span> — Purkinje repolarization</li>
+            </ul>
           </div>
-          
-          <div className="bg-[#111822] border border-gray-800 rounded p-4 flex-1">
-            <h2 className="text-sm text-gray-400 mb-4 border-b border-gray-700 pb-1">EDUCATIONAL LABELS</h2>
-            <div className="space-y-4 text-xs text-gray-300">
-              <div>
-                <strong className="text-[#00ff41]">ECG (Green)</strong>
-                <ul className="mt-1 space-y-1 ml-2 list-disc list-inside">
-                  <li>P wave: Atrial depolarization</li>
-                  <li>QRS: Ventricular depolarization</li>
-                  <li>T wave: Ventricular repolarization</li>
-                </ul>
-              </div>
-              <div>
-                <strong className="text-[#ffd700]">ABP (Yellow)</strong>
-                <ul className="mt-1 space-y-1 ml-2 list-disc list-inside">
-                  <li>Rapid upstroke: Systole</li>
-                  <li>Dicrotic notch: Aortic valve closure</li>
-                  <li>Runoff: Diastole</li>
-                </ul>
-              </div>
-              <div>
-                <strong className="text-[#00e5ff]">CO (Cyan)</strong>
-                <ul className="mt-1 space-y-1 ml-2 list-disc list-inside">
-                  <li>Stroke volume per beat</li>
-                  <li>Total ~5.0 L/min at rest</li>
-                </ul>
-              </div>
-            </div>
+          <div className="mb-1.5">
+            <span className="text-[#ffd700] font-bold tracking-wider">ABP</span>
+            <ul className="mt-0.5 space-y-0.5 ml-2">
+              <li><span className="text-gray-500">Upstroke</span> — Ventricular systole</li>
+              <li><span className="text-gray-500">Dicrotic notch</span> — Aortic valve closure</li>
+              <li><span className="text-gray-500">Runoff</span> — Diastolic decay</li>
+            </ul>
           </div>
+          <div>
+            <span className="text-[#00e5ff] font-bold tracking-wider">CO</span>
+            <ul className="mt-0.5 space-y-0.5 ml-2">
+              <li><span className="text-gray-500">Stroke vol</span> — ~70 mL per beat</li>
+              <li><span className="text-gray-500">CI</span> — 2.8 L/min/m²</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Waveform panels ─────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 gap-1.5 px-2 pb-2 min-h-0">
+        <div className="flex-1 min-h-0">
+          <WaveformCanvas
+            data={ecgData}
+            color="#00ff41"
+            label="ECG II"
+            value="72"
+            unit="bpm"
+            minY={-0.45}
+            maxY={1.35}
+            windowSeconds={6}
+          />
+        </div>
+        <div className="flex-1 min-h-0">
+          <WaveformCanvas
+            data={abpData}
+            color="#ffd700"
+            label="ABP"
+            value="120/80"
+            unit="(93)"
+            minY={55}
+            maxY={145}
+            windowSeconds={6}
+          />
+        </div>
+        <div className="flex-1 min-h-0">
+          <WaveformCanvas
+            data={coData}
+            color="#00e5ff"
+            label="CO"
+            value="5.0"
+            unit="L/min"
+            minY={-0.4}
+            maxY={6}
+            windowSeconds={6}
+          />
         </div>
       </div>
     </div>
