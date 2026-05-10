@@ -38,9 +38,14 @@ export function WaveformCanvas({
     if (!ctx) return;
 
     const resize = () => {
-      if (containerRef.current) {
-        canvas.width = containerRef.current.clientWidth;
-        canvas.height = containerRef.current.clientHeight;
+      const dpr  = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        canvas.width  = Math.round(rect.width  * dpr);
+        canvas.height = Math.round(rect.height * dpr);
+      } else if (containerRef.current) {
+        canvas.width  = containerRef.current.clientWidth  * dpr;
+        canvas.height = containerRef.current.clientHeight * dpr;
       }
     };
     resize();
