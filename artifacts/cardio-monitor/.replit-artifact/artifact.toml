@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Cardio Monitor"
+version = "1.0.0"
+id = "artifacts/cardio-monitor"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22210
+
+[services.development]
+run = "pnpm --filter @workspace/cardio-monitor run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/cardio-monitor", "run", "build" ]
+publicDir = "artifacts/cardio-monitor/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22210"
+BASE_PATH = "/"
