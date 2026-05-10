@@ -1,173 +1,274 @@
-import { motion } from "framer-motion";
+import { useEffect } from "react";
+import {
+  motion,
+  useMotionValue,
+  useTransform,
+  useMotionTemplate,
+} from "framer-motion";
 
-export function HeartAnimation() {
-  const transitionProps = {
-    duration: 0.833,
-    ease: "easeInOut" as const,
-    repeat: Infinity,
-  };
+interface HeartAnimationProps {
+  heartRate: number;
+}
 
-  const laTimes = [0, 0.12, 0.22, 0.28, 0.38, 0.75, 1.0];
-  const raTimes = [0, 0.10, 0.20, 0.27, 0.37, 0.72, 1.0];
-  const ventTimes = [0, 0.12, 0.28, 0.38, 0.45, 0.56, 0.78, 1.0];
+export function HeartAnimation({ heartRate }: HeartAnimationProps) {
+  // Beat duration in ms — recalculates whenever HR changes
+  const beatDuration = 60000 / heartRate;
+
+  // Single shared phase MotionValue (0 → 1 over one beat)
+  // Driven by performance.now() so it is locked to the SAME clock
+  // as WaveformCanvas, giving frame-perfect QRS ↔ heart sync.
+  const phase = useMotionValue(0);
+
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      phase.set((performance.now() % beatDuration) / beatDuration);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [beatDuration, phase]);
+
+  // ── Cardiac cycle keyframes ──────────────────────────────────────
+  // QRS peak is at beatPhase ≈ 0.285 (see Monitor.tsx gaussian centre).
+  // Electromechanical delay + isovolumetric contraction ≈ 120 ms.
+  // At 72 bpm: 120 ms / 833 ms ≈ 0.14 → ventricular peak at ~0.42.
+  //
+  // Atrial systole (P wave onset ≈ 0.13, peak ≈ 0.20):
+  const laPhase  = [0.00, 0.13, 0.20, 0.26, 0.36, 0.72, 1.00];
+  const laScale  = [1.00, 1.00, 0.82, 0.88, 1.00, 1.04, 1.00];
+  const raPhase  = [0.00, 0.11, 0.18, 0.24, 0.34, 0.70, 1.00];
+  const raScale  = [1.00, 1.00, 0.83, 0.89, 1.00, 1.03, 1.00];
+  //
+  // Ventricular systole (QRS ≈ 0.285, peak contraction ≈ 0.42):
+  const vPhase   = [0.00, 0.13, 0.285, 0.38, 0.42, 0.50, 0.60, 0.78, 1.00];
+  const lvScale  = [1.00, 1.00, 1.00,  0.82, 0.78, 0.83, 0.90, 1.02, 1.00];
+  const rvScale  = [1.00, 1.00, 1.00,  0.85, 0.82, 0.87, 0.93, 1.01, 1.00];
+  const lvFills  = [
+    "#e74c3c","#e74c3c","#e74c3c",
+    "#ff5535","#ff2a2a","#ff5535",
+    "#e74c3c","#e74c3c","#e74c3c",
+  ];
+
+  // Glow pulses strongly with ventricular systole
+  const glowSizes = [3, 3, 3, 10, 20, 22, 12, 4, 3];
+  const glowAlphs = [0.22, 0.22, 0.22, 0.65, 1.0, 1.0, 0.45, 0.22, 0.22];
+
+  const scaleLA   = useTransform(phase, laPhase, laScale);
+  const scaleRA   = useTransform(phase, raPhase, raScale);
+  const scaleLV   = useTransform(phase, vPhase,  lvScale);
+  const scaleRV   = useTransform(phase, vPhase,  rvScale);
+  const fillLV    = useTransform(phase, vPhase,  lvFills);
+  const glowSz    = useTransform(phase, vPhase,  glowSizes);
+  const glowAl    = useTransform(phase, vPhase,  glowAlphs);
+  const glowFilter = useMotionTemplate`drop-shadow(0 0 ${glowSz}px rgba(231,76,60,${glowAl}))`;
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center" data-testid="heart-animation">
       <motion.svg
-        width="160"
-        height="176"
+        width="155"
+        height="172"
         viewBox="0 0 200 220"
         className="overflow-visible"
-        animate={{
-          filter: [
-            "drop-shadow(0 0 4px rgba(231,76,60,0.3))",
-            "drop-shadow(0 0 4px rgba(231,76,60,0.3))",
-            "drop-shadow(0 0 6px rgba(231,76,60,0.5))",
-            "drop-shadow(0 0 16px rgba(231,76,60,0.9))",
-            "drop-shadow(0 0 20px rgba(231,76,60,1.0))",
-            "drop-shadow(0 0 10px rgba(231,76,60,0.6))",
-            "drop-shadow(0 0 4px rgba(231,76,60,0.3))",
-            "drop-shadow(0 0 4px rgba(231,76,60,0.3))",
-          ],
-        }}
-        transition={{ ...transitionProps, times: ventTimes }}
+        style={{ filter: glowFilter }}
       >
         <defs>
-          <radialGradient id="lv-gradient" cx="40%" cy="40%" r="60%">
-            <stop offset="0%" stopColor="#ff7675" />
-            <stop offset="100%" stopColor="#e74c3c" />
+          <radialGradient id="lv-grad" cx="38%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#ff7f7f" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#c0392b" />
+          </radialGradient>
+          <radialGradient id="rv-grad" cx="60%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#b94040" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#7b241c" />
+          </radialGradient>
+          <radialGradient id="la-grad" cx="40%" cy="40%" r="60%">
+            <stop offset="0%" stopColor="#e05050" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#a93226" />
+          </radialGradient>
+          <radialGradient id="ra-grad" cx="55%" cy="40%" r="60%">
+            <stop offset="0%" stopColor="#8b3030" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#641e16" />
           </radialGradient>
         </defs>
 
-        {/* --- Great Vessels (Subtly animated or static) --- */}
-        {/* Superior Vena Cava */}
+        {/* ── Great Vessels ──────────────────────────────────────── */}
+
+        {/* SVC — enters top of RA */}
         <path
-          d="M 120,15 C 120,30 125,45 130,55 C 140,45 140,30 140,15 Z"
+          d="M 127,12 C 125,12 121,14 120,20 L 118,52 C 122,54 128,54 132,52 L 130,20 C 129,14 129,12 127,12 Z"
           fill="#5a1812"
-          stroke="#3e110d"
-          strokeWidth="1.5"
-        />
-        {/* Inferior Vena Cava */}
-        <path
-          d="M 125,120 C 125,135 125,145 130,155 C 140,145 140,135 140,120 Z"
-          fill="#5a1812"
-          stroke="#3e110d"
-          strokeWidth="1.5"
-        />
-        {/* Pulmonary Trunk */}
-        <path
-          d="M 110,80 C 100,50 80,40 55,45 C 55,30 80,25 110,50 C 130,40 140,50 140,65 Z"
-          fill="#962d22"
-          stroke="#7b241c"
-          strokeWidth="1.5"
-        />
-        {/* Aortic Arch */}
-        <path
-          d="M 85,60 C 85,20 120,15 130,40 C 140,60 140,80 135,90 C 120,80 115,50 105,45 C 95,40 90,45 90,60 Z"
-          fill="#e74c3c"
-          stroke="#cb4335"
-          strokeWidth="1.5"
+          stroke="#3b0e0a"
+          strokeWidth="1"
         />
 
-        {/* --- Chambers --- */}
-        
-        {/* LA (Left Atrium) */}
+        {/* IVC — exits bottom of RA */}
+        <path
+          d="M 124,142 L 122,160 C 121,166 123,170 126,170 C 129,170 131,166 130,160 L 128,142 Z"
+          fill="#5a1812"
+          stroke="#3b0e0a"
+          strokeWidth="1"
+        />
+
+        {/* Aortic arch — exits LV apex region, sweeps right then up */}
+        <path
+          d="M 80,48 C 78,28 90,14 108,12 C 128,10 140,26 138,46
+             C 136,56 134,66 136,80 C 130,78 126,66 128,54
+             C 130,38 118,24 106,26 C 94,28 88,38 90,54 Z"
+          fill="#c0392b"
+          stroke="#922b21"
+          strokeWidth="1.2"
+        />
+
+        {/* Pulmonary trunk — exits RV, sweeps left */}
+        <path
+          d="M 100,78 C 98,60 88,48 72,44 C 60,42 50,48 46,56
+             C 42,64 46,74 54,76 C 58,64 66,58 76,58
+             C 86,58 94,66 96,80 Z"
+          fill="#7b241c"
+          stroke="#4a1511"
+          strokeWidth="1.2"
+        />
+
+        {/* Pulmonary veins (subtle, left side entering LA) */}
+        <path
+          d="M 44,72 C 36,68 30,72 30,80 C 30,86 36,90 44,88"
+          fill="none"
+          stroke="#a93226"
+          strokeWidth="2"
+          strokeLinecap="round"
+          opacity="0.7"
+        />
+        <path
+          d="M 44,88 C 36,86 30,90 32,98 C 34,104 40,106 48,102"
+          fill="none"
+          stroke="#a93226"
+          strokeWidth="2"
+          strokeLinecap="round"
+          opacity="0.7"
+        />
+
+        {/* ── RV (Right Ventricle) — behind LV, contract together ── */}
         <motion.g
-          style={{ transformOrigin: "72px 70px" }}
-          animate={{ scale: [1.0, 1.0, 0.82, 0.88, 1.0, 1.04, 1.0] }}
-          transition={{ ...transitionProps, times: laTimes }}
+          style={{
+            transformOrigin: "130px 148px",
+            scale: scaleRV,
+          }}
         >
           <path
-            d="M 50,65 C 50,45 85,45 90,65 C 90,85 75,95 65,95 C 50,95 50,85 50,65 Z"
-            fill="#c0392b"
+            d="M 96,96 C 108,88 140,90 152,110
+               C 162,128 158,160 148,178
+               C 138,194 118,204 104,210
+               C 102,194 100,165 98,148
+               C 96,130 94,112 96,96 Z"
+            fill="url(#rv-grad)"
+            stroke="#5a1812"
+            strokeWidth="1.5"
+          />
+        </motion.g>
+
+        {/* ── LV (Left Ventricle) — dominant, pointed apex ──────── */}
+        <motion.g
+          style={{
+            transformOrigin: "70px 152px",
+            scale: scaleLV,
+          }}
+        >
+          <motion.path
+            d="M 52,96 C 36,110 28,140 32,168
+               C 36,190 58,210 96,214
+               C 100,198 100,168 96,148
+               C 94,134 90,112 82,100
+               C 74,90 60,88 52,96 Z"
+            style={{ fill: fillLV }}
             stroke="#922b21"
             strokeWidth="1.5"
           />
         </motion.g>
 
-        {/* RA (Right Atrium) */}
-        <motion.g
-          style={{ transformOrigin: "128px 70px" }}
-          animate={{ scale: [1.0, 1.0, 0.83, 0.89, 1.0, 1.03, 1.0] }}
-          transition={{ ...transitionProps, times: raTimes }}
-        >
-          <path
-            d="M 105,65 C 105,40 150,40 155,65 C 155,85 135,95 120,95 C 105,95 105,85 105,65 Z"
-            fill="#7b241c"
-            stroke="#641e16"
-            strokeWidth="1.5"
-          />
-        </motion.g>
+        {/* Interventricular septum */}
+        <path
+          d="M 96,96 C 97,130 97,170 96,214"
+          stroke="#3b0e0a"
+          strokeWidth="2.5"
+          fill="none"
+          opacity="0.7"
+        />
 
-        {/* RV (Right Ventricle) */}
+        {/* ── LA (Left Atrium) — upper left, oxygenated ────────── */}
         <motion.g
-          style={{ transformOrigin: "128px 145px" }}
-          animate={{ scale: [1.0, 1.0, 1.0, 0.84, 0.82, 0.90, 1.01, 1.0] }}
-          transition={{ ...transitionProps, times: ventTimes }}
+          style={{
+            transformOrigin: "68px 72px",
+            scale: scaleLA,
+          }}
         >
           <path
-            d="M 95,95 C 110,85 150,95 150,145 C 150,175 125,190 105,200 C 105,160 95,130 95,95 Z"
-            fill="#962d22"
+            d="M 44,62 C 44,44 56,38 70,38
+               C 84,38 96,48 96,64
+               C 96,80 84,94 70,96
+               C 56,96 44,84 44,70
+               C 44,66 44,64 44,62 Z"
+            fill="url(#la-grad)"
             stroke="#7b241c"
             strokeWidth="1.5"
           />
         </motion.g>
 
-        {/* LV (Left Ventricle) */}
+        {/* ── RA (Right Atrium) — upper right, deoxygenated ──────── */}
         <motion.g
-          style={{ transformOrigin: "75px 155px" }}
-          animate={{
-            scale: [1.0, 1.0, 1.0, 0.80, 0.78, 0.86, 1.02, 1.0],
-            fill: [
-              "url(#lv-gradient)",
-              "url(#lv-gradient)",
-              "url(#lv-gradient)",
-              "#ff6b6b",
-              "#ff4040",
-              "url(#lv-gradient)",
-              "url(#lv-gradient)",
-              "url(#lv-gradient)",
-            ],
+          style={{
+            transformOrigin: "126px 72px",
+            scale: scaleRA,
           }}
-          transition={{ ...transitionProps, times: ventTimes }}
         >
           <path
-            d="M 55,95 C 35,120 45,185 95,210 C 100,185 100,120 85,95 C 75,85 65,85 55,95 Z"
-            stroke="#cb4335"
+            d="M 96,64 C 96,44 108,36 124,36
+               C 140,36 156,48 156,68
+               C 156,84 144,96 128,98
+               C 112,98 96,88 96,74
+               C 96,70 96,66 96,64 Z"
+            fill="url(#ra-grad)"
+            stroke="#4a1511"
             strokeWidth="1.5"
           />
         </motion.g>
 
-        {/* --- Septa --- */}
         {/* Interatrial septum */}
-        <path d="M 90,65 C 95,75 100,85 105,95" stroke="#4a1511" strokeWidth="2" fill="none" opacity="0.6" />
-        {/* Interventricular septum */}
-        <path d="M 95,95 C 90,130 95,170 95,210" stroke="#4a1511" strokeWidth="2" fill="none" opacity="0.6" />
+        <path
+          d="M 96,64 C 96,76 96,86 96,96"
+          stroke="#3b0e0a"
+          strokeWidth="2"
+          fill="none"
+          opacity="0.7"
+        />
 
-        {/* --- Labels --- */}
-        <g fontSize="7" fontFamily="monospace" fill="#ffffff" opacity="0.9">
-          <text x="30" y="70">LA</text>
-          <line x1="42" y1="68" x2="52" y2="68" stroke="#ffffff" strokeWidth="0.5" opacity="0.5" />
-
-          <text x="165" y="70">RA</text>
-          <line x1="152" y1="68" x2="162" y2="68" stroke="#ffffff" strokeWidth="0.5" opacity="0.5" />
-
-          <text x="25" y="155">LV</text>
-          <line x1="37" y1="153" x2="55" y2="153" stroke="#ffffff" strokeWidth="0.5" opacity="0.5" />
-
-          <text x="165" y="155">RV</text>
-          <line x1="145" y1="153" x2="162" y2="153" stroke="#ffffff" strokeWidth="0.5" opacity="0.5" />
-
-          <text x="110" y="25">Ao</text>
-          <line x1="108" y1="28" x2="103" y2="45" stroke="#ffffff" strokeWidth="0.5" opacity="0.5" />
-
-          <text x="50" y="30">PA</text>
-          <line x1="56" y1="33" x2="70" y2="45" stroke="#ffffff" strokeWidth="0.5" opacity="0.5" />
+        {/* ── Labels ──────────────────────────────────────────────── */}
+        <g fontFamily="monospace" fill="rgba(255,255,255,0.85)" fontSize="7.5">
+          {/* LA */}
+          <text x="24" y="68">LA</text>
+          <line x1="38" y1="66" x2="46" y2="68" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+          {/* RA */}
+          <text x="160" y="68">RA</text>
+          <line x1="157" y1="66" x2="150" y2="68" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+          {/* LV */}
+          <text x="16" y="155">LV</text>
+          <line x1="30" y1="153" x2="46" y2="150" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+          {/* RV */}
+          <text x="160" y="155">RV</text>
+          <line x1="158" y1="153" x2="144" y2="150" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+          {/* Ao */}
+          <text x="104" y="10">Ao</text>
+          <line x1="106" y1="12" x2="108" y2="22" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+          {/* PA */}
+          <text x="30" y="40">PA</text>
+          <line x1="38" y1="41" x2="52" y2="52" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
         </g>
       </motion.svg>
-      
-      <div className="text-xs font-mono text-gray-500 mt-1">
-        72 BPM · SINUS RHYTHM
+
+      <div
+        className="text-[9px] font-mono text-gray-500 mt-1 tracking-widest"
+        data-testid="heart-rate-label"
+      >
+        {heartRate} BPM · SINUS RHYTHM
       </div>
     </div>
   );
