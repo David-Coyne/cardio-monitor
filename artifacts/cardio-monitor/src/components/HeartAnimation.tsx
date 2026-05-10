@@ -71,9 +71,13 @@ export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
         glowAlpha.set(0.20);
 
       } else {
-        // All other rhythms: ventricular phase from same clock as ECG canvas
-        const bd    = 60000 / heartRate;
-        const phase = (now % bd) / bd;
+        // Sync to the identical 15-second rolling buffer the ECG canvas reads.
+        // ECG canvas position: ((now % 15000) / 15000) * 900 samples
+        // Beat length in that sample space: 3600 / heartRate samples
+        // → phase is fractional position within the current beat, 0–1.
+        const bs     = 3600 / heartRate;
+        const sample = ((now % 15000) / 15000) * 900;
+        const phase  = (sample % bs) / bs;
 
         // ── Atria ───────────────────────────────────────────────────────────
         if (rhythmType === "AF") {
