@@ -7,39 +7,91 @@ const gaussian = (x: number, center: number, width: number, height: number) =>
 
 const SAMPLES = 900; // fixed buffer size (15 s at 60 fps)
 
+// Respiratory rate: 14 /min → 3.5 cycles in 15 s
+const RESP_CYCLES = 14 * 15 / 60; // ≈ 3.5
+
+// Deterministic pseudo-random per beat (avoids Math.random so waveform is
+// stable between renders but still looks organic)
+const pseudoRand = (seed: number) =>
+  Math.sin(seed * 127.1 + 311.7) * 43758.545 % 1;
+
 function generateWaveforms(hr: number) {
-  // How many samples fill one beat at this HR, within the 15-s buffer
-  const beatSamples = (900 / 15) * (60 / hr); // = 3600 / hr
+  const beatSamples = 3600 / hr; // samples per beat (may be fractional)
+  const totalBeats  = Math.ceil(SAMPLES / beatSamples) + 1;
+
+  // Pre-compute per-beat variation factors driven by:
+  //   • Respiratory sinus arrhythmia amplitude envelope (sin at resp freq)
+  //   • Small deterministic jitter (pseudo-random per beat)
+  const beatRespPhase = (b: number) =>
+    (b / (SAMPLES / beatSamples)) * RESP_CYCLES * 2 * Math.PI;
+
+  const beatAmp = new Float32Array(totalBeats);    // ECG/QRS amplitude
+  const beatSys = new Float32Array(totalBeats);    // systolic BP delta
+  const beatDia = new Float32Array(totalBeats);    // diastolic BP delta
+  const beatCO  = new Float32Array(totalBeats);    // CO amplitude
+
+  for (let b = 0; b < totalBeats; b++) {
+    const rp   = beatRespPhase(b);
+    const respS = Math.sin(rp);
+    const jitter = pseudoRand(b) * 2 - 1; // −1 → +1
+
+    // QRS/P/T amplitude follows respiration (respiratory amplitude modulation)
+    beatAmp[b] = 1 + 0.07 * respS + 0.015 * jitter;
+
+    // Systolic pressure: respiratory swing ±7 mmHg + minor beat jitter ±2 mmHg
+    beatSys[b] = 7 * respS + 2 * (pseudoRand(b + 500) * 2 - 1);
+
+    // Diastolic pressure: smaller swing ±3 mmHg, 90° out of phase
+    beatDia[b] = 3 * Math.cos(rp) + 1 * (pseudoRand(b + 1000) * 2 - 1);
+
+    // Stroke volume / CO follows systolic inversely with respiration
+    // (inspiration ↑ → venous return ↓ → slightly lower SV)
+    beatCO[b] = 5.2 + 0.35 * respS + 0.1 * jitter;
+  }
 
   const ecg = new Float32Array(SAMPLES);
   const abp = new Float32Array(SAMPLES);
   const co  = new Float32Array(SAMPLES);
 
   for (let i = 0; i < SAMPLES; i++) {
-    const bp = (i % beatSamples) / beatSamples; // 0 → 1 within one beat
+    const beatIdx = Math.floor(i / beatSamples);
+    const bp      = (i - beatIdx * beatSamples) / beatSamples; // 0→1 in beat
+
+    // Global respiratory phase for this sample
+    const respPhase = (i / SAMPLES) * RESP_CYCLES * 2 * Math.PI;
 
     // ── ECG ──────────────────────────────────────────────────────
-    // P wave (atrial depolarisation)
-    let e = gaussian(bp, 0.13,  0.018, 0.18);
-    // QRS complex: Q dip, R spike, S dip
-    e    += gaussian(bp, 0.265, 0.006, -0.18);
-    e    += gaussian(bp, 0.285, 0.009,  1.15); // ← R peak at 28.5 % of beat
-    e    += gaussian(bp, 0.305, 0.007, -0.32);
-    // T wave (ventricular repolarisation)
-    e    += gaussian(bp, 0.52,  0.045,  0.28);
-    // U wave
-    e    += gaussian(bp, 0.68,  0.022,  0.04);
+    const amp = beatAmp[Math.min(beatIdx, totalBeats - 1)];
+
+    // Baseline wander: slow respiratory drift + secondary harmonic
+    const wander = 0.055 * Math.sin(respPhase)
+                 + 0.018 * Math.sin(respPhase * 0.7 + 1.1);
+
+    // Very subtle 60 Hz-like muscle artifact (cosmetic, not aliased)
+    const artifact = 0.010 * Math.sin(60 * 2 * Math.PI * i / SAMPLES * 15);
+
+    let e = wander + artifact;
+    e += gaussian(bp, 0.13,  0.018, 0.18 * amp);   // P wave
+    e += gaussian(bp, 0.265, 0.006, -0.18 * amp);  // Q
+    e += gaussian(bp, 0.285, 0.009,  1.15 * amp);  // R  ← sync anchor
+    e += gaussian(bp, 0.305, 0.007, -0.32 * amp);  // S
+    e += gaussian(bp, 0.52,  0.045,  0.28 * amp);  // T wave
+    e += gaussian(bp, 0.68,  0.022,  0.04);         // U wave (fixed)
     ecg[i] = e;
 
     // ── Arterial BP (mmHg) ───────────────────────────────────────
-    let a = 78;
-    a += gaussian(bp, 0.38,  0.048, 42);   // systolic upstroke
-    a -= gaussian(bp, 0.54,  0.014,  8);   // dicrotic notch
-    a += gaussian(bp, 0.62,  0.07,  12);   // diastolic run-off
+    const sys = beatSys[Math.min(beatIdx, totalBeats - 1)];
+    const dia = beatDia[Math.min(beatIdx, totalBeats - 1)];
+
+    let a = 78 + dia;                               // diastolic baseline
+    a += gaussian(bp, 0.38,  0.048, 42 + sys);      // systolic peak
+    a -= gaussian(bp, 0.54,  0.014,  8);             // dicrotic notch (stable)
+    a += gaussian(bp, 0.62,  0.07,  12 + dia * 0.4);// diastolic run-off
     abp[i] = a;
 
     // ── Cardiac output pulse ─────────────────────────────────────
-    co[i] = gaussian(bp, 0.44, 0.075, 5.2);
+    const coAmp = beatCO[Math.min(beatIdx, totalBeats - 1)];
+    co[i] = gaussian(bp, 0.44, 0.075, coAmp);
   }
 
   return { ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co) };
