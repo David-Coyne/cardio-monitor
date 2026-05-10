@@ -6,6 +6,7 @@ import {
   RHYTHM_CONFIGS,
   generateWaveforms,
 } from "@/lib/rhythmGenerators";
+import { useHeartSound } from "@/hooks/useHeartSound";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,18 @@ export default function Monitor() {
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
   const isLethal  = rhythmCfg.isLethal;
+
+  const { playS1, playS2, playAlarm, muted, toggleMute, unlockAudio } = useHeartSound();
+
+  // Stable refs so the rAF loop always sees the latest sound functions + rhythm
+  const playS1Ref    = useRef(playS1);
+  const playS2Ref    = useRef(playS2);
+  const playAlarmRef = useRef(playAlarm);
+  const rhythmRef    = useRef(rhythmType);
+  useEffect(() => { playS1Ref.current    = playS1;    }, [playS1]);
+  useEffect(() => { playS2Ref.current    = playS2;    }, [playS2]);
+  useEffect(() => { playAlarmRef.current = playAlarm; }, [playAlarm]);
+  useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
 
   // Regenerate waveform buffer when HR or rhythm changes
   const { ecgData, abpData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr } =
@@ -46,24 +59,60 @@ export default function Monitor() {
     beatCORef.current      = beatCOArr;
   }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr]);
 
-  // Single rAF loop — updates readouts once per beat
+  // Single rAF loop — updates readouts once per beat + triggers sounds
   useEffect(() => {
     let rafId: number;
-    let lastBeat = -1;
+    let lastBeat    = -1;
+    let s2Played    = false;
+    let alarmPlayed = false;
+
     const tick = () => {
-      const sample  = ((performance.now() % 15000) / 15000) * 900;
-      const b       = Math.min(
-        Math.floor(sample / beatSamplesRef.current),
-        beatSysRef.current.length - 1,
-      );
+      const now    = performance.now();
+      const sample = ((now % 15000) / 15000) * 900;
+      const bs     = beatSamplesRef.current;
+      const b      = Math.min(Math.floor(sample / bs), beatSysRef.current.length - 1);
+      const phase  = (sample - b * bs) / bs;         // 0–1 within current beat
+      const rhythm = rhythmRef.current;
+
+      // ── Beat-start: update vitals + play S1 ─────────────────────────────
       if (b !== lastBeat) {
         lastBeat = b;
+        s2Played = false;
         const sys = Math.round(beatSysRef.current[b]);
         const dia = Math.round(beatDiaRef.current[b]);
         const map = Math.round(dia + (sys - dia) / 3);
         setLiveBP({ sys, dia, map });
         setLiveCO(parseFloat(beatCORef.current[b].toFixed(1)));
+        // S1 on every organised beat (not VF — no organised beat)
+        if (rhythm !== "VF") playS1Ref.current();
       }
+
+      // ── Mid-beat: S2 at end of systole (~phase 0.38) ────────────────────
+      if (rhythm !== "VF" && phase >= 0.38 && !s2Played) {
+        s2Played = true;
+        playS2Ref.current();
+      }
+
+      // ── VF: two-tone alarm beep every ~900 ms ───────────────────────────
+      if (rhythm === "VF") {
+        const alarmPhase = now % 900;
+        if (alarmPhase < 20 && !alarmPlayed) {
+          alarmPlayed = true;
+          playAlarmRef.current(true);
+        }
+        if (alarmPhase > 40) alarmPlayed = false;
+      }
+
+      // ── VT: single-tone alarm every ~1400 ms ────────────────────────────
+      if (rhythm === "VT") {
+        const alarmPhase = now % 1400;
+        if (alarmPhase < 20 && !alarmPlayed) {
+          alarmPlayed = true;
+          playAlarmRef.current(false);
+        }
+        if (alarmPhase > 40) alarmPlayed = false;
+      }
+
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -73,6 +122,7 @@ export default function Monitor() {
   // ── Rhythm selection ────────────────────────────────────────────────────────
 
   const handleRhythmChange = (type: RhythmType) => {
+    unlockAudio();
     const cfg = RHYTHM_CONFIGS.find(r => r.type === type)!;
     setRhythmType(type);
     setHr(cfg.defaultHR);
@@ -86,6 +136,11 @@ export default function Monitor() {
   const handleHrChange = (raw: string) => {
     const n = parseInt(raw, 10);
     if (!isNaN(n)) setHr(clampHR(n, rhythmCfg.hrMin, rhythmCfg.hrMax));
+  };
+
+  const handleHrStep = (delta: number) => {
+    unlockAudio();
+    if (!isVF) setHr(h => clampHR(h + delta, rhythmCfg.hrMin, rhythmCfg.hrMax));
   };
 
   // Display helpers
@@ -137,7 +192,7 @@ export default function Monitor() {
           <div className="flex items-center gap-1">
             <button
               data-testid="button-hr-decrease"
-              onClick={() => !isVF && setHr(h => clampHR(h - 1, rhythmCfg.hrMin, rhythmCfg.hrMax))}
+              onClick={() => handleHrStep(-1)}
               disabled={isVF}
               className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center"
               style={{
@@ -163,7 +218,7 @@ export default function Monitor() {
             />
             <button
               data-testid="button-hr-increase"
-              onClick={() => !isVF && setHr(h => clampHR(h + 1, rhythmCfg.hrMin, rhythmCfg.hrMax))}
+              onClick={() => handleHrStep(+1)}
               disabled={isVF}
               className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center"
               style={{
@@ -230,9 +285,9 @@ export default function Monitor() {
         </div>
       </header>
 
-      {/* ── Rhythm selector ─────────────────────────────────────────────────── */}
+      {/* ── Rhythm selector + sound toggle ──────────────────────────────────── */}
       <div
-        className="flex gap-1 px-2 py-1"
+        className="flex gap-1 px-2 py-1 items-center"
         style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
       >
         {RHYTHM_CONFIGS.map(cfg => {
@@ -256,6 +311,26 @@ export default function Monitor() {
             </button>
           );
         })}
+
+        {/* Thin divider */}
+        <div style={{ width: 1, alignSelf: "stretch", background: "#1a3a1a", margin: "2px 1px" }} />
+
+        {/* Sound on/off toggle */}
+        <button
+          data-testid="button-sound-toggle"
+          onClick={() => { unlockAudio(); toggleMute(); }}
+          title={muted ? "Sound off — click to enable" : "Sound on — click to mute"}
+          className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
+          style={{
+            width: 34,
+            flexShrink: 0,
+            color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
+            background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
+            border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
+          }}
+        >
+          {muted ? "SND\nOFF" : "SND\nON"}
+        </button>
       </div>
 
       {/* ── Heart + Educational labels ───────────────────────────────────────── */}
