@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { HeartAnimation } from "@/components/HeartAnimation";
 
@@ -94,7 +94,15 @@ function generateWaveforms(hr: number) {
     co[i] = gaussian(bp, 0.44, 0.075, coAmp);
   }
 
-  return { ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co) };
+  return {
+    ecgData:    Array.from(ecg),
+    abpData:    Array.from(abp),
+    coData:     Array.from(co),
+    beatSamples,
+    beatSysArr: Array.from(beatSys),
+    beatDiaArr: Array.from(beatDia),
+    beatCOArr:  Array.from(beatCO),
+  };
 }
 
 // Clamp HR to physiological range
@@ -103,12 +111,58 @@ const clampHR = (v: number) => Math.max(30, Math.min(200, Math.round(v)));
 export default function Monitor() {
   const [hr, setHr] = useState(72);
 
-  // Regenerate waveform buffer whenever HR changes
-  const { ecgData, abpData, coData } = useMemo(() => generateWaveforms(hr), [hr]);
+  // Regenerate waveform buffer + per-beat arrays whenever HR changes
+  const { ecgData, abpData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr } =
+    useMemo(() => generateWaveforms(hr), [hr]);
 
-  // Derived display values
-  const mapBP = Math.round(80 + (120 - 80) / 3); // fixed MAP for display
-  const co    = 5.0;
+  // Live readout state — updated once per beat, not every frame
+  const [liveBP, setLiveBP] = useState({ sys: 120, dia: 80, map: 93 });
+  const [liveCO, setLiveCO] = useState(5.2);
+
+  // Refs so the rAF closure always sees the latest beat arrays without restart
+  const beatSamplesRef = useRef(beatSamples);
+  const beatSysRef     = useRef(beatSysArr);
+  const beatDiaRef     = useRef(beatDiaArr);
+  const beatCORef      = useRef(beatCOArr);
+
+  useEffect(() => {
+    beatSamplesRef.current = beatSamples;
+    beatSysRef.current     = beatSysArr;
+    beatDiaRef.current     = beatDiaArr;
+    beatCORef.current      = beatCOArr;
+    // Reset display immediately on HR change so old values don't linger
+    setLiveBP({ sys: 120, dia: 80, map: 93 });
+    setLiveCO(5.2);
+  }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr]);
+
+  // Single rAF loop — reads current beat index from the same performance.now()
+  // clock used by WaveformCanvas, so readouts match the visible waveform peak.
+  useEffect(() => {
+    let rafId: number;
+    let lastBeat = -1;
+
+    const tick = () => {
+      const elapsed   = performance.now() % 15000;         // 0–15 000 ms
+      const sample    = (elapsed / 15000) * 900;           // 0–900
+      const beatIdx   = Math.floor(sample / beatSamplesRef.current);
+      const maxBeat   = beatSysRef.current.length - 1;
+      const b         = Math.min(beatIdx, maxBeat);
+
+      if (b !== lastBeat) {
+        lastBeat = b;
+        const sys = Math.round(120 + beatSysRef.current[b]);
+        const dia = Math.round(80  + beatDiaRef.current[b]);
+        const map = Math.round(dia + (sys - dia) / 3);
+        setLiveBP({ sys, dia, map });
+        setLiveCO(parseFloat(beatCORef.current[b].toFixed(1)));
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []); // intentionally empty — runs once, reads via refs
 
   const handleHrInput = (raw: string) => {
     const n = parseInt(raw, 10);
@@ -179,12 +233,16 @@ export default function Monitor() {
           </div>
           <div className="flex flex-col items-end leading-none">
             <span className="text-[8px] text-gray-500 tracking-widest">ABP</span>
-            <span className="text-base font-bold text-[#ffd700]">120/80</span>
-            <span className="text-[7px] text-[#ffd700] opacity-60">({mapBP})</span>
+            <span className="text-base font-bold text-[#ffd700]" data-testid="text-abp-value">
+              {liveBP.sys}/{liveBP.dia}
+            </span>
+            <span className="text-[7px] text-[#ffd700] opacity-60">({liveBP.map})</span>
           </div>
           <div className="flex flex-col items-end leading-none">
             <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
-            <span className="text-base font-bold text-[#00e5ff]">{co.toFixed(1)}</span>
+            <span className="text-base font-bold text-[#00e5ff]" data-testid="text-co-value">
+              {liveCO.toFixed(1)}
+            </span>
             <span className="text-[7px] text-[#00e5ff] opacity-60">L/min</span>
           </div>
           <div className="flex flex-col items-end leading-none">
@@ -260,8 +318,8 @@ export default function Monitor() {
             data={abpData}
             color="#ffd700"
             label="ABP"
-            value="120/80"
-            unit="(93)"
+            value={`${liveBP.sys}/${liveBP.dia}`}
+            unit={`(${liveBP.map})`}
             minY={55}
             maxY={145}
             windowSeconds={6}
@@ -272,7 +330,7 @@ export default function Monitor() {
             data={coData}
             color="#00e5ff"
             label="CO"
-            value="5.0"
+            value={liveCO.toFixed(1)}
             unit="L/min"
             minY={-0.4}
             maxY={6}
