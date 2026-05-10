@@ -23,16 +23,14 @@ export default function Monitor() {
   const isVF      = rhythmType === "VF";
   const isLethal  = rhythmCfg.isLethal;
 
-  const { playS1, playS2, playAlarm, muted, toggleMute, unlockAudio } = useHeartSound();
+  const { playS1, playS2, muted, toggleMute, unlockAudio } = useHeartSound();
 
   // Stable refs so the rAF loop always sees the latest sound functions + rhythm
   const playS1Ref    = useRef(playS1);
   const playS2Ref    = useRef(playS2);
-  const playAlarmRef = useRef(playAlarm);
   const rhythmRef    = useRef(rhythmType);
   useEffect(() => { playS1Ref.current    = playS1;    }, [playS1]);
   useEffect(() => { playS2Ref.current    = playS2;    }, [playS2]);
-  useEffect(() => { playAlarmRef.current = playAlarm; }, [playAlarm]);
   useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
 
   // Regenerate waveform buffer when HR or rhythm changes
@@ -62,9 +60,8 @@ export default function Monitor() {
   // Single rAF loop — updates readouts once per beat + triggers sounds
   useEffect(() => {
     let rafId: number;
-    let lastBeat    = -1;
-    let s2Played    = false;
-    let alarmPlayed = false;
+    let lastBeat = -1;
+    let s2Played = false;
 
     const tick = () => {
       const now    = performance.now();
@@ -93,25 +90,6 @@ export default function Monitor() {
         playS2Ref.current();
       }
 
-      // ── VF: two-tone alarm beep every ~900 ms ───────────────────────────
-      if (rhythm === "VF") {
-        const alarmPhase = now % 900;
-        if (alarmPhase < 20 && !alarmPlayed) {
-          alarmPlayed = true;
-          playAlarmRef.current(true);
-        }
-        if (alarmPhase > 40) alarmPlayed = false;
-      }
-
-      // ── VT: single-tone alarm every ~1400 ms ────────────────────────────
-      if (rhythm === "VT") {
-        const alarmPhase = now % 1400;
-        if (alarmPhase < 20 && !alarmPlayed) {
-          alarmPlayed = true;
-          playAlarmRef.current(false);
-        }
-        if (alarmPhase > 40) alarmPlayed = false;
-      }
 
       rafId = requestAnimationFrame(tick);
     };
