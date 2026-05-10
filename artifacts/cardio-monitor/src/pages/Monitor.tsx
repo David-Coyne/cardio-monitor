@@ -1,125 +1,39 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { HeartAnimation } from "@/components/HeartAnimation";
+import {
+  type RhythmType,
+  RHYTHM_CONFIGS,
+  generateWaveforms,
+} from "@/lib/rhythmGenerators";
 
-const gaussian = (x: number, center: number, width: number, height: number) =>
-  height * Math.exp(-Math.pow(x - center, 2) / (2 * Math.pow(width, 2)));
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const SAMPLES = 900; // fixed buffer size (15 s at 60 fps)
+const clampHR = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, Math.round(v)));
 
-// Respiratory rate: 14 /min → 3.5 cycles in 15 s
-const RESP_CYCLES = 14 * 15 / 60; // ≈ 3.5
-
-// Deterministic pseudo-random per beat (avoids Math.random so waveform is
-// stable between renders but still looks organic)
-const pseudoRand = (seed: number) =>
-  Math.sin(seed * 127.1 + 311.7) * 43758.545 % 1;
-
-function generateWaveforms(hr: number) {
-  const beatSamples = 3600 / hr; // samples per beat (may be fractional)
-  const totalBeats  = Math.ceil(SAMPLES / beatSamples) + 1;
-
-  // Pre-compute per-beat variation factors driven by:
-  //   • Respiratory sinus arrhythmia amplitude envelope (sin at resp freq)
-  //   • Small deterministic jitter (pseudo-random per beat)
-  const beatRespPhase = (b: number) =>
-    (b / (SAMPLES / beatSamples)) * RESP_CYCLES * 2 * Math.PI;
-
-  const beatAmp = new Float32Array(totalBeats);    // ECG/QRS amplitude
-  const beatSys = new Float32Array(totalBeats);    // systolic BP delta
-  const beatDia = new Float32Array(totalBeats);    // diastolic BP delta
-  const beatCO  = new Float32Array(totalBeats);    // CO amplitude
-
-  for (let b = 0; b < totalBeats; b++) {
-    const rp   = beatRespPhase(b);
-    const respS = Math.sin(rp);
-    const jitter = pseudoRand(b) * 2 - 1; // −1 → +1
-
-    // QRS/P/T amplitude follows respiration (respiratory amplitude modulation)
-    beatAmp[b] = 1 + 0.07 * respS + 0.015 * jitter;
-
-    // Systolic pressure: respiratory swing ±7 mmHg + minor beat jitter ±2 mmHg
-    beatSys[b] = 7 * respS + 2 * (pseudoRand(b + 500) * 2 - 1);
-
-    // Diastolic pressure: smaller swing ±3 mmHg, 90° out of phase
-    beatDia[b] = 3 * Math.cos(rp) + 1 * (pseudoRand(b + 1000) * 2 - 1);
-
-    // Stroke volume / CO follows systolic inversely with respiration
-    // (inspiration ↑ → venous return ↓ → slightly lower SV)
-    beatCO[b] = 5.2 + 0.35 * respS + 0.1 * jitter;
-  }
-
-  const ecg = new Float32Array(SAMPLES);
-  const abp = new Float32Array(SAMPLES);
-  const co  = new Float32Array(SAMPLES);
-
-  for (let i = 0; i < SAMPLES; i++) {
-    const beatIdx = Math.floor(i / beatSamples);
-    const bp      = (i - beatIdx * beatSamples) / beatSamples; // 0→1 in beat
-
-    // Global respiratory phase for this sample
-    const respPhase = (i / SAMPLES) * RESP_CYCLES * 2 * Math.PI;
-
-    // ── ECG ──────────────────────────────────────────────────────
-    const amp = beatAmp[Math.min(beatIdx, totalBeats - 1)];
-
-    // Baseline wander: slow respiratory drift + secondary harmonic
-    const wander = 0.055 * Math.sin(respPhase)
-                 + 0.018 * Math.sin(respPhase * 0.7 + 1.1);
-
-    // Very subtle 60 Hz-like muscle artifact (cosmetic, not aliased)
-    const artifact = 0.010 * Math.sin(60 * 2 * Math.PI * i / SAMPLES * 15);
-
-    let e = wander + artifact;
-    e += gaussian(bp, 0.13,  0.018, 0.18 * amp);   // P wave
-    e += gaussian(bp, 0.265, 0.006, -0.18 * amp);  // Q
-    e += gaussian(bp, 0.285, 0.009,  1.15 * amp);  // R  ← sync anchor
-    e += gaussian(bp, 0.305, 0.007, -0.32 * amp);  // S
-    e += gaussian(bp, 0.52,  0.045,  0.28 * amp);  // T wave
-    e += gaussian(bp, 0.68,  0.022,  0.04);         // U wave (fixed)
-    ecg[i] = e;
-
-    // ── Arterial BP (mmHg) ───────────────────────────────────────
-    const sys = beatSys[Math.min(beatIdx, totalBeats - 1)];
-    const dia = beatDia[Math.min(beatIdx, totalBeats - 1)];
-
-    let a = 78 + dia;                               // diastolic baseline
-    a += gaussian(bp, 0.38,  0.048, 42 + sys);      // systolic peak
-    a -= gaussian(bp, 0.54,  0.014,  8);             // dicrotic notch (stable)
-    a += gaussian(bp, 0.62,  0.07,  12 + dia * 0.4);// diastolic run-off
-    abp[i] = a;
-
-    // ── Cardiac output pulse ─────────────────────────────────────
-    const coAmp = beatCO[Math.min(beatIdx, totalBeats - 1)];
-    co[i] = gaussian(bp, 0.44, 0.075, coAmp);
-  }
-
-  return {
-    ecgData:    Array.from(ecg),
-    abpData:    Array.from(abp),
-    coData:     Array.from(co),
-    beatSamples,
-    beatSysArr: Array.from(beatSys),
-    beatDiaArr: Array.from(beatDia),
-    beatCOArr:  Array.from(beatCO),
-  };
-}
-
-// Clamp HR to physiological range
-const clampHR = (v: number) => Math.max(30, Math.min(200, Math.round(v)));
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Monitor() {
+  const [rhythmType, setRhythmType] = useState<RhythmType>("SR");
   const [hr, setHr] = useState(72);
 
-  // Regenerate waveform buffer + per-beat arrays whenever HR changes
+  const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
+  const isVF      = rhythmType === "VF";
+  const isLethal  = rhythmCfg.isLethal;
+
+  // Regenerate waveform buffer when HR or rhythm changes
   const { ecgData, abpData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr } =
-    useMemo(() => generateWaveforms(hr), [hr]);
+    useMemo(() => generateWaveforms(hr, rhythmType), [hr, rhythmType]);
 
-  // Live readout state — updated once per beat, not every frame
-  const [liveBP, setLiveBP] = useState({ sys: 120, dia: 80, map: 93 });
-  const [liveCO, setLiveCO] = useState(5.2);
+  // Live readout state — updated once per beat
+  const [liveBP, setLiveBP] = useState({
+    sys: rhythmCfg.defaultSys, dia: rhythmCfg.defaultDia,
+    map: Math.round(rhythmCfg.defaultDia + (rhythmCfg.defaultSys - rhythmCfg.defaultDia) / 3),
+  });
+  const [liveCO, setLiveCO] = useState(rhythmCfg.defaultCO);
 
-  // Refs so the rAF closure always sees the latest beat arrays without restart
+  // Stable refs so the rAF closure always reads the latest data
   const beatSamplesRef = useRef(beatSamples);
   const beatSysRef     = useRef(beatSysArr);
   const beatDiaRef     = useRef(beatDiaArr);
@@ -130,44 +44,57 @@ export default function Monitor() {
     beatSysRef.current     = beatSysArr;
     beatDiaRef.current     = beatDiaArr;
     beatCORef.current      = beatCOArr;
-    // Reset display immediately on HR change so old values don't linger
-    setLiveBP({ sys: 120, dia: 80, map: 93 });
-    setLiveCO(5.2);
   }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr]);
 
-  // Single rAF loop — reads current beat index from the same performance.now()
-  // clock used by WaveformCanvas, so readouts match the visible waveform peak.
+  // Single rAF loop — updates readouts once per beat
   useEffect(() => {
     let rafId: number;
     let lastBeat = -1;
-
     const tick = () => {
-      const elapsed   = performance.now() % 15000;         // 0–15 000 ms
-      const sample    = (elapsed / 15000) * 900;           // 0–900
-      const beatIdx   = Math.floor(sample / beatSamplesRef.current);
-      const maxBeat   = beatSysRef.current.length - 1;
-      const b         = Math.min(beatIdx, maxBeat);
-
+      const sample  = ((performance.now() % 15000) / 15000) * 900;
+      const b       = Math.min(
+        Math.floor(sample / beatSamplesRef.current),
+        beatSysRef.current.length - 1,
+      );
       if (b !== lastBeat) {
         lastBeat = b;
-        const sys = Math.round(120 + beatSysRef.current[b]);
-        const dia = Math.round(80  + beatDiaRef.current[b]);
+        const sys = Math.round(beatSysRef.current[b]);
+        const dia = Math.round(beatDiaRef.current[b]);
         const map = Math.round(dia + (sys - dia) / 3);
         setLiveBP({ sys, dia, map });
         setLiveCO(parseFloat(beatCORef.current[b].toFixed(1)));
       }
-
       rafId = requestAnimationFrame(tick);
     };
-
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, []); // intentionally empty — runs once, reads via refs
+  }, []);
 
-  const handleHrInput = (raw: string) => {
-    const n = parseInt(raw, 10);
-    if (!isNaN(n)) setHr(clampHR(n));
+  // ── Rhythm selection ────────────────────────────────────────────────────────
+
+  const handleRhythmChange = (type: RhythmType) => {
+    const cfg = RHYTHM_CONFIGS.find(r => r.type === type)!;
+    setRhythmType(type);
+    setHr(cfg.defaultHR);
+    setLiveBP({
+      sys: cfg.defaultSys, dia: cfg.defaultDia,
+      map: Math.round(cfg.defaultDia + (cfg.defaultSys - cfg.defaultDia) / 3),
+    });
+    setLiveCO(cfg.defaultCO);
   };
+
+  const handleHrChange = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n)) setHr(clampHR(n, rhythmCfg.hrMin, rhythmCfg.hrMax));
+  };
+
+  // Display helpers
+  const hrDisplay  = isVF ? "---" : rhythmType === "AF" ? `~${hr}` : String(hr);
+  const bpDisplay  = isVF ? "40/25" : `${liveBP.sys}/${liveBP.dia}`;
+  const mapDisplay = isVF ? "29" : String(liveBP.map);
+  const coDisplay  = liveCO.toFixed(1);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -175,141 +102,231 @@ export default function Monitor() {
       style={{ height: "100dvh", maxHeight: "100dvh" }}
       data-testid="monitor-root"
     >
-      {/* ── Header ───────────────────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header
-        className="flex items-center justify-between px-3 py-1.5 border-b"
-        style={{ borderColor: "#0d2a0d", flexShrink: 0 }}
+        className="flex items-center justify-between px-3 py-1"
+        style={{
+          borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`,
+          flexShrink: 0,
+        }}
       >
         <div>
-          <div className="text-[10px] font-bold tracking-[0.2em] text-gray-300">CLINICAL MONITOR</div>
-          <div className="text-[8px] text-gray-600 tracking-widest">ICU BED 04 · ADULT · SINUS RHYTHM</div>
+          <div className="text-[10px] font-bold tracking-[0.2em] text-gray-300">
+            CLINICAL MONITOR
+          </div>
+          <div className="text-[8px] text-gray-600 tracking-widest">
+            ICU BED 04 · ADULT
+          </div>
+          <div
+            className="text-[8px] font-bold tracking-widest mt-0.5"
+            style={{ color: isLethal ? "#ff4040" : "#00ff41" }}
+          >
+            {rhythmCfg.fullName.toUpperCase()}
+          </div>
         </div>
 
-        {/* ── HR input control ──────────────────────────────────── */}
+        {/* ── HR input ────────────────────────────────────────────────────── */}
         <div
-          className="flex flex-col items-center px-2 py-1 rounded"
-          style={{ border: "1px solid rgba(0,255,65,0.25)", background: "rgba(0,255,65,0.04)" }}
+          className="flex flex-col items-center px-2 py-0.5 rounded"
+          style={{
+            border: `1px solid ${isVF ? "rgba(80,80,80,0.3)" : "rgba(0,255,65,0.25)"}`,
+            background: isVF ? "rgba(30,30,30,0.3)" : "rgba(0,255,65,0.04)",
+          }}
         >
-          <span className="text-[7px] tracking-widest text-gray-500 mb-0.5">SET HR</span>
+          <span className="text-[7px] tracking-widest text-gray-500">SET HR</span>
           <div className="flex items-center gap-1">
             <button
               data-testid="button-hr-decrease"
-              onClick={() => setHr(h => clampHR(h - 1))}
-              onMouseDown={e => e.preventDefault()}
-              className="w-5 h-5 rounded text-[10px] font-bold text-[#00ff41] flex items-center justify-center"
-              style={{ background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)" }}
-            >
-              −
-            </button>
+              onClick={() => !isVF && setHr(h => clampHR(h - 1, rhythmCfg.hrMin, rhythmCfg.hrMax))}
+              disabled={isVF}
+              className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center"
+              style={{
+                color: isVF ? "#444" : "#00ff41",
+                background: isVF ? "transparent" : "rgba(0,255,65,0.1)",
+                border: `1px solid ${isVF ? "#333" : "rgba(0,255,65,0.3)"}`,
+              }}
+            >−</button>
             <input
               data-testid="input-heart-rate"
               type="number"
-              min={30}
-              max={200}
-              value={hr}
-              onChange={e => handleHrInput(e.target.value)}
-              className="w-11 text-center text-[15px] font-bold bg-transparent outline-none text-[#00ff41]"
-              style={{ MozAppearance: "textfield" } as React.CSSProperties}
+              min={rhythmCfg.hrMin}
+              max={rhythmCfg.hrMax}
+              value={isVF ? "" : hr}
+              placeholder={isVF ? "---" : ""}
+              disabled={isVF}
+              onChange={e => handleHrChange(e.target.value)}
+              className="w-11 text-center text-[14px] font-bold bg-transparent outline-none"
+              style={{
+                color: isVF ? "#555" : "#00ff41",
+                MozAppearance: "textfield",
+              } as React.CSSProperties}
             />
             <button
               data-testid="button-hr-increase"
-              onClick={() => setHr(h => clampHR(h + 1))}
-              onMouseDown={e => e.preventDefault()}
-              className="w-5 h-5 rounded text-[10px] font-bold text-[#00ff41] flex items-center justify-center"
-              style={{ background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)" }}
-            >
-              +
-            </button>
+              onClick={() => !isVF && setHr(h => clampHR(h + 1, rhythmCfg.hrMin, rhythmCfg.hrMax))}
+              disabled={isVF}
+              className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center"
+              style={{
+                color: isVF ? "#444" : "#00ff41",
+                background: isVF ? "transparent" : "rgba(0,255,65,0.1)",
+                border: `1px solid ${isVF ? "#333" : "rgba(0,255,65,0.3)"}`,
+              }}
+            >+</button>
           </div>
-          <span className="text-[7px] text-[#00ff41] opacity-60 mt-0.5">bpm (30–200)</span>
+          <span className="text-[7px] opacity-60 mt-0.5" style={{ color: isVF ? "#555" : "#00ff41" }}>
+            {isVF ? "N/A" : `${rhythmCfg.hrMin}–${rhythmCfg.hrMax} bpm`}
+          </span>
         </div>
 
-        {/* ── Vital signs strip ─────────────────────────────────── */}
-        <div className="flex gap-3 items-end">
-          <div className="flex flex-col items-end leading-none">
-            <span className="text-[8px] text-gray-500 tracking-widest">HR</span>
-            <span className="text-base font-bold text-[#00ff41]">{hr}</span>
-            <span className="text-[7px] text-[#00ff41] opacity-60">bpm</span>
-          </div>
-          <div className="flex flex-col items-end leading-none">
-            <span className="text-[8px] text-gray-500 tracking-widest">ABP</span>
-            <span className="text-base font-bold text-[#ffd700]" data-testid="text-abp-value">
-              {liveBP.sys}/{liveBP.dia}
-            </span>
-            <span className="text-[7px] text-[#ffd700] opacity-60">({liveBP.map})</span>
-          </div>
-          <div className="flex flex-col items-end leading-none">
-            <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
-            <span className="text-base font-bold text-[#00e5ff]" data-testid="text-co-value">
-              {liveCO.toFixed(1)}
-            </span>
-            <span className="text-[7px] text-[#00e5ff] opacity-60">L/min</span>
-          </div>
-          <div className="flex flex-col items-end leading-none">
-            <span className="text-[8px] text-gray-500 tracking-widest">SpO₂</span>
-            <span className="text-base font-bold text-white">98</span>
-            <span className="text-[7px] text-gray-400 opacity-60">%</span>
-          </div>
-          <div className="flex flex-col items-end leading-none">
-            <span className="text-[8px] text-gray-500 tracking-widest">RR</span>
-            <span className="text-base font-bold text-gray-300">14</span>
-            <span className="text-[7px] text-gray-500 opacity-60">/min</span>
+        {/* ── Vital signs + alarm ─────────────────────────────────────────── */}
+        <div className="flex flex-col items-end gap-0.5">
+          {isLethal && (
+            <div
+              className="text-[9px] font-bold tracking-widest animate-pulse px-1.5 py-0.5 rounded"
+              style={{
+                color: "#ff4040",
+                background: "rgba(255,64,64,0.12)",
+                border: "1px solid rgba(255,64,64,0.4)",
+              }}
+              data-testid="alarm-indicator"
+            >
+              ⚠ ALARM
+            </div>
+          )}
+          <div className="flex gap-3 items-end">
+            <div className="flex flex-col items-end leading-none">
+              <span className="text-[8px] text-gray-500 tracking-widest">HR</span>
+              <span
+                className="text-base font-bold"
+                style={{ color: isVF ? "#555" : "#00ff41" }}
+                data-testid="text-hr-value"
+              >
+                {hrDisplay}
+              </span>
+              <span className="text-[7px] opacity-60" style={{ color: isVF ? "#555" : "#00ff41" }}>bpm</span>
+            </div>
+            <div className="flex flex-col items-end leading-none">
+              <span className="text-[8px] text-gray-500 tracking-widest">ABP</span>
+              <span className="text-base font-bold text-[#ffd700]" data-testid="text-abp-value">
+                {bpDisplay}
+              </span>
+              <span className="text-[7px] text-[#ffd700] opacity-60">({mapDisplay})</span>
+            </div>
+            <div className="flex flex-col items-end leading-none">
+              <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
+              <span className="text-base font-bold text-[#00e5ff]" data-testid="text-co-value">
+                {coDisplay}
+              </span>
+              <span className="text-[7px] text-[#00e5ff] opacity-60">L/min</span>
+            </div>
+            <div className="flex flex-col items-end leading-none">
+              <span className="text-[8px] text-gray-500 tracking-widest">SpO₂</span>
+              <span className="text-base font-bold" style={{ color: isVF ? "#555" : "white" }}>
+                {isVF ? "--" : "98"}
+              </span>
+              <span className="text-[7px] text-gray-400 opacity-60">%</span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* ── Heart + Educational labels ───────────────────────────── */}
+      {/* ── Rhythm selector ─────────────────────────────────────────────────── */}
       <div
-        className="flex items-center justify-center gap-3 px-3 pt-1 pb-0.5"
+        className="flex gap-1 px-2 py-1"
+        style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
+      >
+        {RHYTHM_CONFIGS.map(cfg => {
+          const active  = rhythmType === cfg.type;
+          const danger  = cfg.isLethal;
+          const col     = danger ? "#ff5555" : "#00ff41";
+          return (
+            <button
+              key={cfg.type}
+              data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
+              onClick={() => handleRhythmChange(cfg.type)}
+              className="flex-1 text-[9px] font-bold py-0.5 rounded tracking-wider transition-all"
+              style={{
+                color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
+                background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
+                border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
+                boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
+              }}
+            >
+              {cfg.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Heart + Educational labels ───────────────────────────────────────── */}
+      <div
+        className="flex items-center justify-center gap-3 px-3 pt-0.5 pb-0"
         style={{ flexShrink: 0 }}
       >
         <div
-          className="flex items-center justify-center rounded px-1"
-          style={{ border: "1px solid #0d2a0d" }}
+          className="flex items-center justify-center rounded"
+          style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}` }}
           data-testid="heart-panel"
         >
-          <HeartAnimation heartRate={hr} />
+          <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} />
         </div>
 
-        <div className="flex-1 text-[8.5px] leading-relaxed text-gray-400" data-testid="edu-labels">
+        <div className="flex-1 text-[8px] leading-relaxed text-gray-400" data-testid="edu-labels">
           <div className="mb-1">
-            <span className="text-[#00ff41] font-bold tracking-wider text-[9px]">ECG</span>
-            <ul className="mt-0.5 space-y-0 ml-2">
-              <li><span className="text-gray-500">P wave</span> — Atrial depolarization</li>
-              <li><span className="text-gray-500">QRS</span> — Ventricular depolarization</li>
-              <li><span className="text-gray-500">T wave</span> — Ventricular repolarization</li>
-              <li><span className="text-gray-500">U wave</span> — Purkinje repolarization</li>
+            <span className="text-[#00ff41] font-bold tracking-wider text-[8.5px]">ECG</span>
+            <ul className="mt-0.5 ml-2 space-y-0">
+              {rhythmType === "AF"  && <li className="text-amber-400">No P waves · Irregular RR</li>}
+              {rhythmType === "SVT" && <li className="text-amber-400">Retrograde P · Narrow QRS</li>}
+              {rhythmType === "VT"  && <li className="text-red-400">Wide QRS · AV dissociation</li>}
+              {rhythmType === "VF"  && <li className="text-red-400">Chaotic · No organised QRS</li>}
+              {(rhythmType === "SR" || rhythmType === "ST" || rhythmType === "SB") && (
+                <>
+                  <li><span className="text-gray-500">P wave</span> — Atrial depolarization</li>
+                  <li><span className="text-gray-500">QRS</span> — Ventricular depolarization</li>
+                  <li><span className="text-gray-500">T wave</span> — Ventricular repolarization</li>
+                </>
+              )}
             </ul>
           </div>
           <div className="mb-1">
-            <span className="text-[#ffd700] font-bold tracking-wider text-[9px]">ABP</span>
-            <ul className="mt-0.5 space-y-0 ml-2">
-              <li><span className="text-gray-500">Upstroke</span> — Ventricular systole</li>
-              <li><span className="text-gray-500">Dicrotic notch</span> — Aortic valve closure</li>
-              <li><span className="text-gray-500">Runoff</span> — Diastolic decay</li>
+            <span className="text-[#ffd700] font-bold tracking-wider text-[8.5px]">ABP</span>
+            <ul className="mt-0.5 ml-2 space-y-0">
+              {rhythmType === "VF" && <li className="text-red-400">Agonal trace · No perfusion</li>}
+              {rhythmType === "VT" && <li className="text-red-400">Reduced SBP · Haemodynamic compromise</li>}
+              {rhythmType === "AF" && <li className="text-amber-400">Variable pulse pressure</li>}
+              {(rhythmType !== "VF" && rhythmType !== "VT" && rhythmType !== "AF") && (
+                <>
+                  <li><span className="text-gray-500">Upstroke</span> — Systole</li>
+                  <li><span className="text-gray-500">Dicrotic notch</span> — Aortic valve closure</li>
+                </>
+              )}
             </ul>
           </div>
           <div>
-            <span className="text-[#00e5ff] font-bold tracking-wider text-[9px]">CO</span>
-            <ul className="mt-0.5 space-y-0 ml-2">
-              <li><span className="text-gray-500">Stroke vol</span> — ~70 mL per beat</li>
-              <li><span className="text-gray-500">CI</span> — 2.8 L/min/m²</li>
+            <span className="text-[#00e5ff] font-bold tracking-wider text-[8.5px]">CO</span>
+            <ul className="mt-0.5 ml-2 space-y-0">
+              {rhythmType === "VF" && <li className="text-red-400">No cardiac output</li>}
+              {rhythmType === "VT" && <li className="text-red-400">Severely reduced CO</li>}
+              {rhythmType === "AF" && <li className="text-amber-400">Reduced · Loss of atrial kick</li>}
+              {(rhythmType !== "VF" && rhythmType !== "VT" && rhythmType !== "AF") && (
+                <li><span className="text-gray-500">Stroke vol</span> — ~70 mL/beat</li>
+              )}
             </ul>
           </div>
         </div>
       </div>
 
-      {/* ── Waveform panels ─────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 gap-1.5 px-2 pb-2 min-h-0">
+      {/* ── Waveform panels ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 gap-1 px-2 pb-2 pt-1 min-h-0">
         <div className="flex-1 min-h-0">
           <WaveformCanvas
             data={ecgData}
-            color="#00ff41"
+            color={isLethal ? "#ff4040" : "#00ff41"}
             label="ECG II"
-            value={String(hr)}
+            value={hrDisplay}
             unit="bpm"
-            minY={-0.45}
-            maxY={1.35}
+            minY={rhythmCfg.ecgMinY}
+            maxY={rhythmCfg.ecgMaxY}
             windowSeconds={6}
           />
         </div>
@@ -318,10 +335,10 @@ export default function Monitor() {
             data={abpData}
             color="#ffd700"
             label="ABP"
-            value={`${liveBP.sys}/${liveBP.dia}`}
-            unit={`(${liveBP.map})`}
-            minY={55}
-            maxY={145}
+            value={bpDisplay}
+            unit={`(${mapDisplay})`}
+            minY={rhythmCfg.abpMinY}
+            maxY={rhythmCfg.abpMaxY}
             windowSeconds={6}
           />
         </div>
@@ -330,10 +347,10 @@ export default function Monitor() {
             data={coData}
             color="#00e5ff"
             label="CO"
-            value={liveCO.toFixed(1)}
+            value={coDisplay}
             unit="L/min"
-            minY={-0.4}
-            maxY={6}
+            minY={rhythmCfg.coMinY}
+            maxY={rhythmCfg.coMaxY}
             windowSeconds={6}
           />
         </div>
