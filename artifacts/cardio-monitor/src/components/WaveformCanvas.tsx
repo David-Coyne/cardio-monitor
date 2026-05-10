@@ -63,38 +63,6 @@ export function WaveformCanvas({
 
       ctx.clearRect(0, 0, width, height);
 
-      // === Draw grid (like ECG paper) ===
-      const pixelsPerSecond = width / windowSeconds;
-      const majorGrid = pixelsPerSecond * 0.2; // 0.2s = 1 large square at 25mm/s
-      const minorGrid = majorGrid / 5;           // 0.04s = 1 small square
-
-      // Minor grid lines
-      ctx.strokeStyle = gridColor;
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      for (let x = 0; x <= width; x += minorGrid) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-      }
-      for (let y = 0; y <= height; y += minorGrid) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-      }
-      ctx.stroke();
-
-      // Major grid lines (slightly brighter)
-      ctx.strokeStyle = gridColor.replace("001800", "002a00");
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = 0; x <= width; x += majorGrid) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-      }
-      for (let y = 0; y <= height; y += majorGrid) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-      }
-      ctx.stroke();
 
       // === Draw waveform ===
       // Current head of the trace (rightmost visible sample)

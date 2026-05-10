@@ -169,9 +169,6 @@ export default function Monitor() {
           <div className="text-[10px] font-bold tracking-[0.2em] text-gray-300">
             CLINICAL MONITOR
           </div>
-          <div className="text-[8px] text-gray-600 tracking-widest">
-            ICU BED 04 · ADULT
-          </div>
           <div
             className="text-[8px] font-bold tracking-widest mt-0.5"
             style={{ color: isLethal ? "#ff4040" : "#00ff41" }}
@@ -273,13 +270,6 @@ export default function Monitor() {
                 {coDisplay}
               </span>
               <span className="text-[7px] text-[#00e5ff] opacity-60">L/min</span>
-            </div>
-            <div className="flex flex-col items-end leading-none">
-              <span className="text-[8px] text-gray-500 tracking-widest">SpO₂</span>
-              <span className="text-base font-bold" style={{ color: isVF ? "#555" : "white" }}>
-                {isVF ? "--" : "98"}
-              </span>
-              <span className="text-[7px] text-gray-400 opacity-60">%</span>
             </div>
           </div>
         </div>
