@@ -19,23 +19,26 @@ function lerp(inp: number[], out: number[], v: number): number {
   return out[out.length - 1];
 }
 
-// ── Normal sinus keyframes (shared by SR, ST, SB, AF ventricular, SVT) ───────
-const laP = [0.00, 0.13, 0.20, 0.26, 0.36, 0.72, 1.00];
-const laS = [1.00, 1.00, 0.82, 0.88, 1.00, 1.04, 1.00];
-const raP = [0.00, 0.11, 0.18, 0.24, 0.34, 0.70, 1.00];
-const raS = [1.00, 1.00, 0.83, 0.89, 1.00, 1.03, 1.00];
-const vP  = [0.00, 0.13, 0.285, 0.38, 0.42, 0.50, 0.60, 0.78, 1.00];
-const lvS = [1.00, 1.00, 1.00,  0.82, 0.78, 0.83, 0.90, 1.02, 1.00];
-const rvS = [1.00, 1.00, 1.00,  0.85, 0.82, 0.87, 0.93, 1.01, 1.00];
-const gSz = [3,    3,    3,    10,   20,   22,   12,   4,    3   ]; // glow size
-const gAl = [0.22, 0.22, 0.22, 0.65, 1.0,  1.0,  0.45, 0.22, 0.22];
+// ── Sinus keyframes — glow/contraction peak COINCIDES with R-wave (phase 0.285)
+// ECG generator places:  P peak @ 0.13,  Q @ 0.265,  R peak @ 0.285,  T peak @ 0.52
+// Atria:  contract with P wave, relax before QRS
+const laP = [0.00, 0.12, 0.145, 0.195, 0.280, 0.72, 1.00];
+const laS = [1.00, 1.00, 0.830, 0.860, 1.000, 1.03, 1.00];
+const raP = [0.00, 0.10, 0.130, 0.180, 0.265, 0.70, 1.00];
+const raS = [1.00, 1.00, 0.840, 0.870, 1.000, 1.03, 1.00];
+// Ventricles: glow spikes sharply at QRS start (0.255) and PEAKS at R peak (0.285)
+const vP  = [0.00, 0.13, 0.255, 0.285, 0.340, 0.480, 0.620, 0.840, 1.00];
+const lvS = [1.00, 1.00, 1.000, 0.800, 0.760, 0.810, 0.920, 1.020, 1.00];
+const rvS = [1.00, 1.00, 1.000, 0.840, 0.810, 0.845, 0.935, 1.010, 1.00];
+const gSz = [3,    3,    8,     22,    22,    14,    6,     3,     3   ];
+const gAl = [0.22, 0.22, 0.55,  1.00,  0.95,  0.55,  0.24,  0.22,  0.22];
 
-// ── VT keyframes (wide QRS: earlier onset, no atrial, longer systole) ─────────
-const vtP  = [0.00, 0.10, 0.22, 0.35, 0.45, 0.60, 0.80, 1.00];
-const vtLV = [1.00, 1.00, 0.82, 0.76, 0.80, 0.92, 1.01, 1.00];
-const vtRV = [1.00, 1.00, 0.85, 0.80, 0.84, 0.93, 1.01, 1.00];
-const vtGS = [3,    3,    8,   16,   14,    6,    3,    3   ];
-const vtGA = [0.2,  0.2,  0.5,  0.85, 0.7,  0.3,  0.2,  0.2 ];
+// ── VT keyframes — wide QRS: glow peaks at phase 0.285, longer decay ──────────
+const vtP  = [0.00, 0.10, 0.220, 0.285, 0.370, 0.490, 0.650, 0.870, 1.00];
+const vtLV = [1.00, 1.00, 0.860, 0.780, 0.760, 0.810, 0.920, 1.010, 1.00];
+const vtRV = [1.00, 1.00, 0.890, 0.820, 0.800, 0.840, 0.930, 1.010, 1.00];
+const vtGS = [3,    3,    12,    22,    22,    14,    6,     3,     3   ];
+const vtGA = [0.2,  0.2,  0.65,  1.0,   0.95,  0.55,  0.24,  0.2,   0.2 ];
 
 export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
   // ── All motion values (hooks must be unconditional) ───────────────────────
