@@ -333,49 +333,6 @@ export default function Monitor() {
           <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} />
         </div>
 
-        <div className="flex-1 text-[8px] leading-relaxed text-gray-400" data-testid="edu-labels">
-          <div className="mb-1">
-            <span className="text-[#00ff41] font-bold tracking-wider text-[8.5px]">ECG</span>
-            <ul className="mt-0.5 ml-2 space-y-0">
-              {rhythmType === "AF"  && <li className="text-amber-400">No P waves · Irregular RR</li>}
-              {rhythmType === "SVT" && <li className="text-amber-400">Retrograde P · Narrow QRS</li>}
-              {rhythmType === "VT"  && <li className="text-red-400">Wide QRS · AV dissociation</li>}
-              {rhythmType === "VF"  && <li className="text-red-400">Chaotic · No organised QRS</li>}
-              {(rhythmType === "SR" || rhythmType === "ST" || rhythmType === "SB") && (
-                <>
-                  <li><span className="text-gray-500">P wave</span> — Atrial depolarization</li>
-                  <li><span className="text-gray-500">QRS</span> — Ventricular depolarization</li>
-                  <li><span className="text-gray-500">T wave</span> — Ventricular repolarization</li>
-                </>
-              )}
-            </ul>
-          </div>
-          <div className="mb-1">
-            <span className="text-[#ffd700] font-bold tracking-wider text-[8.5px]">ABP</span>
-            <ul className="mt-0.5 ml-2 space-y-0">
-              {rhythmType === "VF" && <li className="text-red-400">Agonal trace · No perfusion</li>}
-              {rhythmType === "VT" && <li className="text-red-400">Reduced SBP · Haemodynamic compromise</li>}
-              {rhythmType === "AF" && <li className="text-amber-400">Variable pulse pressure</li>}
-              {(rhythmType !== "VF" && rhythmType !== "VT" && rhythmType !== "AF") && (
-                <>
-                  <li><span className="text-gray-500">Upstroke</span> — Systole</li>
-                  <li><span className="text-gray-500">Dicrotic notch</span> — Aortic valve closure</li>
-                </>
-              )}
-            </ul>
-          </div>
-          <div>
-            <span className="text-[#00e5ff] font-bold tracking-wider text-[8.5px]">CO</span>
-            <ul className="mt-0.5 ml-2 space-y-0">
-              {rhythmType === "VF" && <li className="text-red-400">No cardiac output</li>}
-              {rhythmType === "VT" && <li className="text-red-400">Severely reduced CO</li>}
-              {rhythmType === "AF" && <li className="text-amber-400">Reduced · Loss of atrial kick</li>}
-              {(rhythmType !== "VF" && rhythmType !== "VT" && rhythmType !== "AF") && (
-                <li><span className="text-gray-500">Stroke vol</span> — ~70 mL/beat</li>
-              )}
-            </ul>
-          </div>
-        </div>
       </div>
 
       {/* ── Waveform panels ─────────────────────────────────────────────────── */}
@@ -406,13 +363,13 @@ export default function Monitor() {
         </div>
         <div className="flex-1 min-h-0">
           <WaveformCanvas
-            data={coData}
+            data={abpData}
             color="#00e5ff"
-            label="CO"
-            value={coDisplay}
-            unit="L/min"
-            minY={rhythmCfg.coMinY}
-            maxY={rhythmCfg.coMaxY}
+            label="ART"
+            value={bpDisplay}
+            unit={`(${mapDisplay})`}
+            minY={rhythmCfg.abpMinY}
+            maxY={rhythmCfg.abpMaxY}
             windowSeconds={6}
           />
         </div>
