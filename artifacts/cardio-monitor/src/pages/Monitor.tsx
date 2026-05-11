@@ -13,9 +13,27 @@ import { useHeartSound } from "@/hooks/useHeartSound";
 const clampHR = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, Math.round(v)));
 
+const DESIGN_W = 390;
+const DESIGN_H = 844;
+
+function useMonitorScale() {
+  const calc = () =>
+    typeof window === "undefined"
+      ? 1
+      : Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+  const [scale, setScale] = useState(calc);
+  useEffect(() => {
+    const onResize = () => setScale(calc);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return scale;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Monitor() {
+  const scale = useMonitorScale();
   const [rhythmType, setRhythmType] = useState<RhythmType>("SR");
   const [hr, setHr] = useState(72);
 
@@ -130,9 +148,10 @@ export default function Monitor() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <div style={{ width: "100vw", height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080c10", overflow: "hidden" }}>
     <div
       className="flex flex-col bg-[#080c10] text-white font-mono select-none overflow-hidden"
-      style={{ width: "100vw", height: "100dvh" }}
+      style={{ width: DESIGN_W, height: DESIGN_H, transform: `scale(${scale})`, transformOrigin: "center center", flexShrink: 0 }}
       data-testid="monitor-root"
     >
       {/* ── Header ─────────────────────────────────────────────────────────── */}
@@ -398,6 +417,7 @@ export default function Monitor() {
           />
         </div>
       </div>
+    </div>
     </div>
   );
 }
