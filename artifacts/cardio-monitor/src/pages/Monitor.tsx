@@ -229,19 +229,18 @@ export default function Monitor() {
 
         {/* ── Vital signs + alarm ─────────────────────────────────────────── */}
         <div className="flex flex-col items-end gap-0.5">
-          {isLethal && (
-            <div
-              className="text-[9px] font-bold tracking-widest animate-pulse px-1.5 py-0.5 rounded"
-              style={{
-                color: "#ff4040",
-                background: "rgba(255,64,64,0.12)",
-                border: "1px solid rgba(255,64,64,0.4)",
-              }}
-              data-testid="alarm-indicator"
-            >
-              ⚠ ALARM
-            </div>
-          )}
+          <div
+            className="text-[9px] font-bold tracking-widest animate-pulse px-1.5 py-0.5 rounded"
+            style={{
+              color: "#ff4040",
+              background: isLethal ? "rgba(255,64,64,0.12)" : "transparent",
+              border: `1px solid ${isLethal ? "rgba(255,64,64,0.4)" : "transparent"}`,
+              visibility: isLethal ? "visible" : "hidden",
+            }}
+            data-testid="alarm-indicator"
+          >
+            ⚠ ALARM
+          </div>
           <div className="flex gap-3 items-end">
             <div className="flex flex-col items-end leading-none" style={{ minWidth: "2.25rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">HR</span>
