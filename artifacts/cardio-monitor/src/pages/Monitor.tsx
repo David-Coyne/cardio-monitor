@@ -163,11 +163,8 @@ export default function Monitor() {
         }}
       >
         <div style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
-          <div className="text-[10px] font-bold tracking-[0.2em] text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis">
-            CLINICAL MONITOR
-          </div>
           <div
-            className="text-[8px] font-bold tracking-widest mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis"
+            className="text-[10px] font-bold tracking-widest whitespace-nowrap overflow-hidden text-ellipsis"
             style={{ color: isLethal ? "#ff4040" : "#00ff41" }}
           >
             {rhythmCfg.fullName.toUpperCase()}
