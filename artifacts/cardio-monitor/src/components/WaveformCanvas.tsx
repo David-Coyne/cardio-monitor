@@ -125,22 +125,6 @@ export function WaveformCanvas({
       // Main trace
       drawSegment(0, width, 1.0, 1.8);
 
-      // Dark gap centred at sweepX — covers the age discontinuity between segments
-      const gapHalf = Math.max(6, width * 0.014);
-      const glL = ctx.createLinearGradient(sweepX - gapHalf * 2, 0, sweepX, 0);
-      glL.addColorStop(0, "rgba(8,12,16,0)");
-      glL.addColorStop(1, "rgba(8,12,16,0.97)");
-      ctx.fillStyle = glL;
-      ctx.fillRect(sweepX - gapHalf * 2, 0, gapHalf * 2, height);
-
-      ctx.fillStyle = "rgba(8,12,16,1)";
-      ctx.fillRect(sweepX, 0, 2, height);
-
-      const glR = ctx.createLinearGradient(sweepX + 2, 0, sweepX + gapHalf * 2 + 2, 0);
-      glR.addColorStop(0, "rgba(8,12,16,0.97)");
-      glR.addColorStop(1, "rgba(8,12,16,0)");
-      ctx.fillStyle = glR;
-      ctx.fillRect(sweepX + 2, 0, gapHalf * 2, height);
 
       animationFrameId = requestAnimationFrame(render);
     };
