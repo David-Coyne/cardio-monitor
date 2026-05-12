@@ -254,7 +254,7 @@ export default function Monitor() {
               </span>
               <span className="text-[7px] opacity-60" style={{ color: isVF ? "#555" : "#00ff41" }}>bpm</span>
             </div>
-            <div className="flex flex-col items-end leading-none">
+            <div className="flex flex-col items-end leading-none" style={{ minWidth: "3.75rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">ABP</span>
               <span className="text-base font-bold text-[#ffd700]" data-testid="text-abp-value">
                 {bpDisplay}
