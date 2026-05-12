@@ -10,6 +10,9 @@ interface WaveformCanvasProps {
   minY?: number;
   maxY?: number;
   windowSeconds?: number;
+  labelFontSize?: string;
+  valueFontSize?: string;
+  unitFontSize?: string;
 }
 
 // Real ECG paper speed: 25mm/s
@@ -26,6 +29,9 @@ export function WaveformCanvas({
   minY = -1,
   maxY = 1,
   windowSeconds = 6,
+  labelFontSize = "0.75rem",
+  valueFontSize = "1.5rem",
+  unitFontSize  = "0.75rem",
 }: WaveformCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -155,8 +161,8 @@ export function WaveformCanvas({
       data-testid={`waveform-${label.toLowerCase().replace(/\s/g, "-")}`}
     >
       <div
-        className="absolute top-1.5 left-2 z-10 font-mono text-xs font-bold tracking-widest"
-        style={{ color }}
+        className="absolute top-1.5 left-2 z-10 font-mono font-bold tracking-widest"
+        style={{ color, fontSize: labelFontSize }}
       >
         {label}
       </div>
@@ -164,8 +170,8 @@ export function WaveformCanvas({
         className="absolute top-1 right-3 z-10 font-mono flex items-baseline gap-1"
         style={{ color }}
       >
-        <span className="text-2xl font-bold leading-none">{value}</span>
-        <span className="text-xs opacity-80">{unit}</span>
+        <span style={{ fontSize: valueFontSize, fontWeight: "bold", lineHeight: 1 }}>{value}</span>
+        <span style={{ fontSize: unitFontSize, opacity: 0.8 }}>{unit}</span>
       </div>
       <canvas ref={canvasRef} className="w-full h-full block" />
     </div>

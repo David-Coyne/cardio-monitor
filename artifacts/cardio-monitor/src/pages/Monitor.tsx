@@ -172,7 +172,7 @@ export default function Monitor() {
         onClick={() => handleRhythmChange(cfg.type)}
         style={{
           flex: 1,
-          fontSize: "0.6rem",
+          fontSize: "clamp(0.5rem, 1vw, 0.8rem)",
           fontWeight: "bold",
           padding: "3px 0",
           borderRadius: "3px",
@@ -195,9 +195,9 @@ export default function Monitor() {
       data-testid="button-sound-toggle"
       onClick={() => { unlockAudio(); toggleMute(); }}
       style={{
-        width: 40,
+        width: "clamp(28px, 3.5vw, 44px)",
         flexShrink: 0,
-        fontSize: "0.55rem",
+        fontSize: "clamp(0.45rem, 0.85vw, 0.7rem)",
         fontWeight: "bold",
         borderRadius: "3px",
         padding: "2px 0",
@@ -212,12 +212,12 @@ export default function Monitor() {
     </button>
   );
 
-  const setHrBox = (fontSize = "0.75rem") => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "4px 10px", border: "1px solid rgba(0,255,65,0.25)", background: "rgba(0,255,65,0.04)", borderRadius: "4px", flexShrink: 0 }}>
-      <span style={{ fontSize: "0.55rem", letterSpacing: "0.15em", color: "#6b7280" }}>SET HR</span>
-      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+  const setHrBox = () => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "clamp(3px,0.5vh,6px) clamp(8px,1.2vw,14px)", border: "1px solid rgba(0,255,65,0.25)", background: "rgba(0,255,65,0.04)", borderRadius: "4px", flexShrink: 0 }}>
+      <span style={{ fontSize: "clamp(0.45rem,0.75vw,0.7rem)", letterSpacing: "0.15em", color: "#6b7280" }}>SET HR</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "clamp(4px,0.6vw,8px)" }}>
         <button data-testid="button-hr-decrease" onClick={() => handleHrStep(-1)} disabled={isVF}
-          style={{ width: 22, height: 22, borderRadius: 3, fontWeight: "bold", fontSize: "0.75rem", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>−</button>
+          style={{ width: "clamp(18px,2.2vw,30px)", height: "clamp(18px,2.2vw,30px)", borderRadius: 3, fontWeight: "bold", fontSize: "clamp(0.65rem,1.2vw,1.1rem)", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>−</button>
         <input
           data-testid="input-heart-rate"
           type="number" min={rhythmCfg.hrMin} max={rhythmCfg.hrMax}
@@ -228,12 +228,12 @@ export default function Monitor() {
           onFocus={() => { if (!isVF) setHrDraft(String(hr)); }}
           onBlur={commitHrDraft}
           onKeyDown={e => { if (e.key === "Enter") { commitHrDraft(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { setHrDraft(null); (e.target as HTMLInputElement).blur(); } }}
-          style={{ width: 44, textAlign: "center", fontSize, fontWeight: "bold", background: "transparent", outline: "none", color: "#00ff41", MozAppearance: "textfield" } as React.CSSProperties}
+          style={{ width: "clamp(36px,4vw,56px)", textAlign: "center", fontSize: "clamp(0.85rem,1.5vw,1.4rem)", fontWeight: "bold", background: "transparent", outline: "none", color: "#00ff41", MozAppearance: "textfield" } as React.CSSProperties}
         />
         <button data-testid="button-hr-increase" onClick={() => handleHrStep(+1)} disabled={isVF}
-          style={{ width: 22, height: 22, borderRadius: 3, fontWeight: "bold", fontSize: "0.75rem", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>+</button>
+          style={{ width: "clamp(18px,2.2vw,30px)", height: "clamp(18px,2.2vw,30px)", borderRadius: 3, fontWeight: "bold", fontSize: "clamp(0.65rem,1.2vw,1.1rem)", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>+</button>
       </div>
-      <span style={{ fontSize: "0.55rem", color: "#00ff41", opacity: 0.6, whiteSpace: "nowrap" }}>
+      <span style={{ fontSize: "clamp(0.42rem,0.7vw,0.62rem)", color: "#00ff41", opacity: 0.6, whiteSpace: "nowrap" }}>
         {isVF ? "N/A" : `${rhythmCfg.hrMin}–${rhythmCfg.hrMax} bpm`}
       </span>
     </div>
@@ -242,11 +242,11 @@ export default function Monitor() {
   // ── Landscape layout (16:9 and wider) ───────────────────────────────────────
 
   if (isLandscape) {
-    const vitalCol = (label: string, value: string, sub: string, color: string, minW = "3rem") => (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1, minWidth: minW }}>
-        <span style={{ fontSize: "0.6rem", color: "#6b7280", letterSpacing: "0.15em" }}>{label}</span>
-        <span style={{ fontSize: "1.4rem", fontWeight: "bold", color }}>{value}</span>
-        <span style={{ fontSize: "0.55rem", color, opacity: 0.65 }}>{sub}</span>
+    const vitalCol = (label: string, value: string, sub: string, color: string) => (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1 }}>
+        <span style={{ fontSize: "clamp(0.45rem,0.85vw,0.75rem)", color: "#6b7280", letterSpacing: "0.15em" }}>{label}</span>
+        <span style={{ fontSize: "clamp(0.9rem,2.2vw,2rem)", fontWeight: "bold", color }}>{value}</span>
+        <span style={{ fontSize: "clamp(0.4rem,0.7vw,0.65rem)", color, opacity: 0.65 }}>{sub}</span>
       </div>
     );
 
@@ -254,25 +254,25 @@ export default function Monitor() {
       <div data-testid="monitor-root" style={{ width: "100vw", height: "100dvh", display: "flex", flexDirection: "column", background: "#080c10", color: "white", fontFamily: "monospace", userSelect: "none", overflow: "hidden" }}>
 
         {/* ── Header ─────────────────────────────────────────────────────────── */}
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 20px", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: 16 }}>
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "clamp(4px,0.6vh,8px) clamp(12px,1.5vw,24px)", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: "clamp(8px,1.5vw,20px)" }}>
           <div style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
-            <div style={{ fontSize: "0.9rem", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ fontSize: "clamp(0.7rem,1.4vw,1.5rem)", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {rhythmCfg.fullName.toUpperCase()}
             </div>
           </div>
-          {setHrBox("1rem")}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+          {setHrBox()}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "clamp(2px,0.3vh,4px)", flexShrink: 0 }}>
             <div style={{
-              fontSize: "0.7rem", fontWeight: "bold", letterSpacing: "0.15em", padding: "2px 8px", borderRadius: 3,
+              fontSize: "clamp(0.55rem,1vw,0.85rem)", fontWeight: "bold", letterSpacing: "0.15em", padding: "2px 8px", borderRadius: 3,
               color: "#ff4040", background: isLethal ? "rgba(255,64,64,0.12)" : "transparent",
               border: `1px solid ${isLethal ? "rgba(255,64,64,0.4)" : "transparent"}`,
               visibility: isLethal ? "visible" : "hidden",
               animation: isLethal ? "pulse 1s infinite" : "none",
             }} data-testid="alarm-indicator">⚠ ALARM</div>
-            <div style={{ display: "flex", gap: 20, alignItems: "flex-end" }}>
-              {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41", "2.5rem")}
-              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ffd700", "4.5rem")}
-              {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff", "2.5rem")}
+            <div style={{ display: "flex", gap: "clamp(10px,1.8vw,28px)", alignItems: "flex-end" }}>
+              {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41")}
+              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ffd700")}
+              {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff")}
             </div>
           </div>
         </header>
@@ -295,13 +295,13 @@ export default function Monitor() {
           {/* Right: waveforms */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0 }}>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} />
+              <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={abpData} color="#ffd700" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} />
+              <WaveformCanvas data={abpData} color="#ffd700" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={artData} color="#00e5ff" label="ART" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} />
+              <WaveformCanvas data={artData} color="#00e5ff" label="ART" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
             </div>
           </div>
 
