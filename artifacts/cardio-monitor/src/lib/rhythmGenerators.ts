@@ -5,6 +5,7 @@ export type RhythmType = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF';
 export interface WaveformData {
   ecgData:    number[];
   abpData:    number[];
+  artData:    number[];       // Radial arterial line (Philips-style morphology)
   coData:     number[];
   beatSamples: number;        // mean samples per beat (for rAF cursor)
   beatSysArr: number[];       // ABSOLUTE systolic mmHg per beat
@@ -54,6 +55,42 @@ const gaussian = (x: number, c: number, w: number, h: number) =>
 const pr = (seed: number) =>
   Math.abs(Math.sin(seed * 127.1 + 311.7) * 43758.545 % 1);
 
+// ── Philips IntelliVue–style radial arterial line sample ─────────────────────
+// Characteristics: razor-sharp upstroke, narrow peak, pronounced dicrotic
+// notch (~28% of pulse pressure), small dicrotic wave, smooth diastolic runoff.
+// Peripheral amplification: sys +6%, dia −3 mmHg relative to central ABP.
+function artSample(bp: number, sys: number, dia: number): number {
+  const artSys = sys * 1.06;                  // peripheral pulse amplification
+  const artDia = dia - 3;
+  const pp     = artSys - artDia;
+
+  let v = artDia;
+
+  // Very narrow systolic peak — almost vertical upstroke on Philips display
+  v += gaussian(bp, 0.362, 0.016, pp);
+
+  // Anachrotic shoulder (subtle inflection on upstroke, common on radial traces)
+  v += gaussian(bp, 0.330, 0.010, pp * 0.08);
+
+  // Pronounced dicrotic notch — sharp V dip, ~28% of pulse pressure
+  v -= gaussian(bp, 0.508, 0.009, pp * 0.28);
+
+  // Dicrotic (secondary) wave — small rebound hump after the notch
+  v += gaussian(bp, 0.565, 0.028, pp * 0.072);
+
+  return v;
+}
+
+// VT variant: broad, weak peripheral pulse with blunted notch
+function artSampleVT(bp: number, sys: number, dia: number): number {
+  const pp = sys - dia;
+  let v = dia;
+  v += gaussian(bp, 0.400, 0.030, pp * 0.88);  // broader, reduced peak
+  v -= gaussian(bp, 0.560, 0.013, pp * 0.15);   // notch less defined
+  v += gaussian(bp, 0.620, 0.035, pp * 0.04);
+  return v;
+}
+
 // ── Sinus family (SR, ST, SB) ─────────────────────────────────────────────────
 
 function generateSinus(
@@ -83,6 +120,7 @@ function generateSinus(
 
   const ecg = new Float32Array(SAMPLES);
   const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
   const co  = new Float32Array(SAMPLES);
 
   for (let i = 0; i < SAMPLES; i++) {
@@ -111,11 +149,13 @@ function generateSinus(
     a += gaussian(bp, 0.62,  0.07,  (sys - dia) * 0.18);
     abp[i] = a;
 
+    art[i] = artSample(bp, sys, dia);
+
     co[i] = gaussian(bp, 0.44, 0.075, beatCO[bi]);
   }
 
   return {
-    ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co),
+    ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
     beatSamples: bs,
     beatSysArr: Array.from(beatSys),
     beatDiaArr: Array.from(beatDia),
@@ -178,6 +218,7 @@ function generateAF(hr: number): WaveformData {
 
   const ecg = new Float32Array(SAMPLES);
   const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
   const co  = new Float32Array(SAMPLES);
 
   for (let i = 0; i < SAMPLES; i++) {
@@ -201,11 +242,13 @@ function generateAF(hr: number): WaveformData {
     a += gaussian(bp, 0.62, 0.07,  (sys - dia) * 0.18);
     abp[i] = a;
 
+    art[i] = artSample(bp, sys, dia);
+
     co[i] = gaussian(bp, 0.44, 0.075, beatCO[bi]);
   }
 
   return {
-    ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co),
+    ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
     beatSamples: meanBS,
     beatSysArr: Array.from(beatSys),
     beatDiaArr: Array.from(beatDia),
@@ -224,6 +267,7 @@ function generateSVT(hr: number): WaveformData {
 
   const ecg = new Float32Array(SAMPLES);
   const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
   const co  = new Float32Array(SAMPLES);
 
   for (let i = 0; i < SAMPLES; i++) {
@@ -248,11 +292,13 @@ function generateSVT(hr: number): WaveformData {
     a += gaussian(bp, 0.62, 0.07,  (sys - dia) * 0.15);
     abp[i] = a;
 
+    art[i] = artSample(bp, sys, dia);
+
     co[i] = gaussian(bp, 0.44, 0.075, beatCO[bi]);
   }
 
   return {
-    ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co),
+    ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
     beatSamples: bs,
     beatSysArr: Array.from(beatSys),
     beatDiaArr: Array.from(beatDia),
@@ -271,6 +317,7 @@ function generateVT(hr: number): WaveformData {
 
   const ecg = new Float32Array(SAMPLES);
   const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
   const co  = new Float32Array(SAMPLES);
 
   for (let i = 0; i < SAMPLES; i++) {
@@ -293,11 +340,13 @@ function generateVT(hr: number): WaveformData {
     a += gaussian(bp, 0.65, 0.07,  (sys - dia) * 0.14);
     abp[i] = a;
 
+    art[i] = artSampleVT(bp, sys, dia);
+
     co[i] = gaussian(bp, 0.46, 0.080, beatCO[bi]);
   }
 
   return {
-    ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co),
+    ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
     beatSamples: bs,
     beatSysArr: Array.from(beatSys),
     beatDiaArr: Array.from(beatDia),
@@ -310,6 +359,7 @@ function generateVT(hr: number): WaveformData {
 function generateVF(): WaveformData {
   const ecg = new Float32Array(SAMPLES);
   const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
   const co  = new Float32Array(SAMPLES);
 
   // Coarse VF: overlapping sinusoids at 3-8 Hz + pseudo-noise
@@ -328,12 +378,16 @@ function generateVF(): WaveformData {
     abp[i] = 35 + 6 * Math.sin(2 * Math.PI * i / 90 + 0.5)
                 + 3 * (pr(i + 444) * 2 - 1);
 
+    // ART in VF: agonal flatline, essentially no pulsatile waveform
+    art[i] = 28 + 4 * Math.sin(2 * Math.PI * i / 95 + 1.2)
+                + 2 * (pr(i + 888) * 2 - 1);
+
     // Essentially zero CO
     co[i] = 0.05 + 0.04 * Math.sin(2 * Math.PI * i / 30);
   }
 
   return {
-    ecgData: Array.from(ecg), abpData: Array.from(abp), coData: Array.from(co),
+    ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
     beatSamples: 12,
     beatSysArr: [40],
     beatDiaArr: [25],

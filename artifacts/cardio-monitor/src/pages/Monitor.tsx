@@ -52,7 +52,7 @@ export default function Monitor() {
   useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
 
   // Regenerate waveform buffer when HR or rhythm changes
-  const { ecgData, abpData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr } =
+  const { ecgData, abpData, artData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr } =
     useMemo(() => generateWaveforms(hr, rhythmType), [hr, rhythmType]);
 
   // Live readout state — updated once per beat
@@ -363,7 +363,7 @@ export default function Monitor() {
         </div>
         <div className="flex-1 min-h-0">
           <WaveformCanvas
-            data={abpData}
+            data={artData}
             color="#00e5ff"
             label="ART"
             value={bpDisplay}
