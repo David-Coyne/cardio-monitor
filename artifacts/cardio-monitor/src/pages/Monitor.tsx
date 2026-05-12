@@ -62,7 +62,7 @@ export default function Monitor() {
   useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
 
   // Regenerate waveform buffer when HR or rhythm changes
-  const { ecgData, abpData, artData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr, beatTypeArr, beatStartsArr } =
+  const { ecgData, abpData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr, beatTypeArr, beatStartsArr } =
     useMemo(() => generateWaveforms(hr, rhythmType), [hr, rhythmType]);
 
   // Live readout state — updated once per beat
@@ -340,9 +340,6 @@ export default function Monitor() {
             <div style={{ flex: 1, minHeight: 0 }}>
               <WaveformCanvas data={abpData} color="#ff4444" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
             </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={artData} color="#00e5ff" label="ART" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
-            </div>
           </div>
 
         </div>
@@ -565,18 +562,6 @@ export default function Monitor() {
             data={abpData}
             color="#ff4444"
             label="ABP"
-            value={bpDisplay}
-            unit={`(${mapDisplay})`}
-            minY={rhythmCfg.abpMinY}
-            maxY={rhythmCfg.abpMaxY}
-            windowSeconds={6}
-          />
-        </div>
-        <div className="flex-1 min-h-0">
-          <WaveformCanvas
-            data={artData}
-            color="#00e5ff"
-            label="ART"
             value={bpDisplay}
             unit={`(${mapDisplay})`}
             minY={rhythmCfg.abpMinY}
