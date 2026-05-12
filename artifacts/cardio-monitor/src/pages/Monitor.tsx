@@ -242,10 +242,10 @@ export default function Monitor() {
   // ── Landscape layout (16:9 and wider) ───────────────────────────────────────
 
   if (isLandscape) {
-    const vitalCol = (label: string, value: string, sub: string, color: string) => (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1 }}>
+    const vitalCol = (label: string, value: string, sub: string, color: string, minW = "auto") => (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1, minWidth: minW }}>
         <span style={{ fontSize: "clamp(0.45rem,0.85vw,0.75rem)", color: "#6b7280", letterSpacing: "0.15em" }}>{label}</span>
-        <span style={{ fontSize: "clamp(0.9rem,2.2vw,2rem)", fontWeight: "bold", color }}>{value}</span>
+        <span style={{ fontSize: "clamp(0.9rem,2.2vw,2rem)", fontWeight: "bold", color, display: "block", textAlign: "right" }}>{value}</span>
         <span style={{ fontSize: "clamp(0.4rem,0.7vw,0.65rem)", color, opacity: 0.65 }}>{sub}</span>
       </div>
     );
@@ -270,9 +270,9 @@ export default function Monitor() {
               animation: isLethal ? "pulse 1s infinite" : "none",
             }} data-testid="alarm-indicator">⚠ ALARM</div>
             <div style={{ display: "flex", gap: "clamp(10px,1.8vw,28px)", alignItems: "flex-end" }}>
-              {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41")}
-              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ffd700")}
-              {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff")}
+              {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41", "clamp(2.2rem,4.5vw,5rem)")}
+              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ffd700", "clamp(4rem,8vw,9rem)")}
+              {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff", "clamp(2rem,4vw,4.5rem)")}
             </div>
           </div>
         </header>
@@ -412,11 +412,11 @@ export default function Monitor() {
             ⚠ ALARM
           </div>
           <div className="flex gap-2 items-end">
-            <div className="flex flex-col items-end leading-none" style={{ minWidth: "1.875rem" }}>
+            <div className="flex flex-col items-end leading-none" style={{ minWidth: "2.75rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">HR</span>
               <span
                 className="text-base font-bold"
-                style={{ color: isVF ? "#555" : "#00ff41" }}
+                style={{ color: isVF ? "#555" : "#00ff41", display: "block", textAlign: "right" }}
                 data-testid="text-hr-value"
               >
                 {hrDisplay}
