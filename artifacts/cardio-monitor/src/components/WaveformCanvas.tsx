@@ -73,62 +73,68 @@ export function WaveformCanvas({
       // Current head of the trace (rightmost visible sample)
       const currentSampleIndex = Math.floor(progress * data.length);
 
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.8;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
+      // Sweep cursor is fixed at the horizontal centre of the canvas.
+      // Left half:  newest data flows left from the cursor.
+      // Right half: older data (previous pass) continues from where the left half began.
+      // This eliminates the drifting gap and keeps the write-head always centred.
+      const sweepX = Math.floor(width / 2);
 
-      // Glow effect: draw a slightly thicker, lower-opacity version first
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.18;
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      for (let x = 0; x < width; x++) {
-        const sampleOffset = Math.floor((1 - x / width) * samplesOnScreen);
-        let sampleIndex = (currentSampleIndex - sampleOffset + data.length) % data.length;
-        const val = data[sampleIndex];
-        const normalizedVal = (val - minY) / (maxY - minY);
-        const y = height - normalizedVal * height * 0.85 - height * 0.075;
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.restore();
+      const sampleAt = (x: number) => {
+        // Map each pixel to a buffer position using the centred-sweep formula.
+        // Pixels just left of sweepX → offset 0 (newest).
+        // Pixels just right of sweepX → offset ≈ samplesOnScreen (oldest).
+        const offset = Math.floor(((sweepX - x + width) % width) / width * samplesOnScreen);
+        const idx    = (currentSampleIndex - offset + data.length) % data.length;
+        const val    = data[idx];
+        const norm   = (val - minY) / (maxY - minY);
+        return height - norm * height * 0.85 - height * 0.075;
+      };
 
+      const drawSegment = (x0: number, x1: number, alpha: number, lw: number) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha  = alpha;
+        ctx.lineWidth    = lw;
+        ctx.lineJoin     = "round";
+        ctx.lineCap      = "round";
+        // Left segment
+        ctx.beginPath();
+        for (let x = x0; x < sweepX; x++) {
+          const y = sampleAt(x);
+          if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        // Right segment (separate path — no line crossing the gap)
+        ctx.beginPath();
+        for (let x = sweepX; x < x1; x++) {
+          const y = sampleAt(x);
+          if (x === sweepX) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      // Glow pass
+      drawSegment(0, width, 0.18, 5);
       // Main trace
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      for (let x = 0; x < width; x++) {
-        const sampleOffset = Math.floor((1 - x / width) * samplesOnScreen);
-        let sampleIndex = (currentSampleIndex - sampleOffset + data.length) % data.length;
-        const val = data[sampleIndex];
-        const normalizedVal = (val - minY) / (maxY - minY);
-        const y = height - normalizedVal * height * 0.85 - height * 0.075;
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+      drawSegment(0, width, 1.0, 1.8);
 
-      // Dim trailing edge (sweep line effect — dark band at leading edge)
-      const sweepWidth = Math.max(8, width * 0.02);
-      const sweepX = (currentSampleIndex / data.length) * width;
-      const gradient = ctx.createLinearGradient(sweepX, 0, sweepX + sweepWidth, 0);
-      gradient.addColorStop(0, "rgba(10,14,20,0.95)");
-      gradient.addColorStop(1, "rgba(10,14,20,0)");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(sweepX, 0, sweepWidth, height);
+      // Dark gap centred at sweepX — covers the age discontinuity between segments
+      const gapHalf = Math.max(6, width * 0.014);
+      const glL = ctx.createLinearGradient(sweepX - gapHalf * 2, 0, sweepX, 0);
+      glL.addColorStop(0, "rgba(8,12,16,0)");
+      glL.addColorStop(1, "rgba(8,12,16,0.97)");
+      ctx.fillStyle = glL;
+      ctx.fillRect(sweepX - gapHalf * 2, 0, gapHalf * 2, height);
 
-      // Wrap-around: also dim at the right edge if sweep has wrapped
-      if (sweepX + sweepWidth > width) {
-        const wrapGrad = ctx.createLinearGradient(0, 0, sweepWidth - (width - sweepX), 0);
-        wrapGrad.addColorStop(0, "rgba(10,14,20,0.95)");
-        wrapGrad.addColorStop(1, "rgba(10,14,20,0)");
-        ctx.fillStyle = wrapGrad;
-        ctx.fillRect(0, 0, sweepWidth - (width - sweepX), height);
-      }
+      ctx.fillStyle = "rgba(8,12,16,1)";
+      ctx.fillRect(sweepX, 0, 2, height);
+
+      const glR = ctx.createLinearGradient(sweepX + 2, 0, sweepX + gapHalf * 2 + 2, 0);
+      glR.addColorStop(0, "rgba(8,12,16,0.97)");
+      glR.addColorStop(1, "rgba(8,12,16,0)");
+      ctx.fillStyle = glR;
+      ctx.fillRect(sweepX + 2, 0, gapHalf * 2, height);
 
       animationFrameId = requestAnimationFrame(render);
     };
