@@ -44,7 +44,7 @@ export const RHYTHM_CONFIGS: RhythmConfig[] = [
   { type: 'SVT', label: 'SVT', fullName: 'Supraventricular Tachycardia',                        defaultHR: 180, hrMin: 150, hrMax: 240, isLethal: false, defaultSys: 100, defaultDia: 70, defaultCO: 4.0, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 40,  abpMaxY: 130, coMinY: -0.4, coMaxY: 6   },
   { type: 'VT',  label: 'VT',  fullName: 'Ventricular Tachycardia',    defaultHR: 150, hrMin: 120, hrMax: 200, isLethal: true,  defaultSys: 90,  defaultDia: 60, defaultCO: 3.0, ecgMinY: -0.6,  ecgMaxY: 1.6,  abpMinY: 30,  abpMaxY: 120, coMinY: -0.4, coMaxY: 5   },
   { type: 'VF',  label: 'VF',  fullName: 'Ventricular Fibrillation',   defaultHR: 300, hrMin: 300, hrMax: 300, isLethal: true,  defaultSys: 40,  defaultDia: 25, defaultCO: 0.1, ecgMinY: -2.0,  ecgMaxY: 2.0,  abpMinY: 0,   abpMaxY: 80,  coMinY: -0.1, coMaxY: 0.5 },
-  { type: 'PVC', label: 'PVC', fullName: 'Premature Ventricular Contraction', defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.5, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
+  { type: 'PVC', label: 'Bigemini', fullName: 'Ventricular Bigeminy', defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.5, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
 ];
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
