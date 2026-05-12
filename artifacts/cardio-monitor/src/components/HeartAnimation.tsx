@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { motion, useMotionValue, useMotionTemplate } from "framer-motion";
 import type { RhythmType } from "@/lib/rhythmGenerators";
 
@@ -7,6 +7,7 @@ interface HeartAnimationProps {
   rhythmType: RhythmType;
   svgWidth?: number;
   svgHeight?: number;
+  paused?: boolean;
 }
 
 function lerp(inp: number[], out: number[], v: number): number {
@@ -58,7 +59,7 @@ function buildKeyframes(hr: number) {
   return { vP, vtP, pvcP, laP, raP };
 }
 
-export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: HeartAnimationProps) {
+export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight, paused = false }: HeartAnimationProps) {
   const laScale    = useMotionValue(1);
   const raScale    = useMotionValue(1);
   const lvScale    = useMotionValue(1);
@@ -79,6 +80,10 @@ export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: H
     let rafId: number;
 
     const tick = () => {
+      if (paused) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
       const now = performance.now();
 
       if (rhythmType === "VF") {
@@ -171,7 +176,7 @@ export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: H
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [heartRate, rhythmType, laScale, raScale, lvScale, rvScale, lvFill, glowSize, glowAlpha, coroAlpha, coroWidth, coroOffset]);
+  }, [heartRate, rhythmType, paused, laScale, raScale, lvScale, rvScale, lvFill, glowSize, glowAlpha, coroAlpha, coroWidth, coroOffset]);
 
   const isVF     = rhythmType === "VF";
   const isLethal = rhythmType === "VF" || rhythmType === "VT";

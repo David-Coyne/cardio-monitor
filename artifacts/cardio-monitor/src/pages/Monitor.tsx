@@ -46,6 +46,7 @@ export default function Monitor() {
   const [rhythmType, setRhythmType] = useState<RhythmType>("SR");
   const [hr, setHr] = useState(72);
   const [hrDraft, setHrDraft] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -57,6 +58,8 @@ export default function Monitor() {
   const playS1Ref    = useRef(playS1);
   const playS2Ref    = useRef(playS2);
   const rhythmRef    = useRef(rhythmType);
+  const pausedRef    = useRef(paused);
+  useEffect(() => { pausedRef.current    = paused;    }, [paused]);
   useEffect(() => { playS1Ref.current    = playS1;    }, [playS1]);
   useEffect(() => { playS2Ref.current    = playS2;    }, [playS2]);
   useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
@@ -103,6 +106,7 @@ export default function Monitor() {
     let s2Played = false;
 
     const tick = () => {
+      if (pausedRef.current) { rafId = requestAnimationFrame(tick); return; }
       const now    = performance.now();
       const sample = ((now % 15000) / 15000) * 900;
       const bs     = beatSamplesRef.current;
@@ -279,6 +283,37 @@ export default function Monitor() {
     </div>
   );
 
+  // ── Shared pause / play overlay (position:fixed — works in both layouts) ──────
+  const pauseBtn = (
+    <button
+      onClick={() => setPaused(p => !p)}
+      aria-label={paused ? "Resume" : "Pause"}
+      style={{
+        position:       "fixed",
+        top:            "50%",
+        left:           "50%",
+        transform:      "translate(-50%, -50%)",
+        width:          52,
+        height:         52,
+        borderRadius:   "50%",
+        background:     "rgba(0,0,0,0.55)",
+        border:         `1.5px solid ${paused ? "#00ff41" : "rgba(0,255,65,0.35)"}`,
+        color:          paused ? "#00ff41" : "rgba(255,255,255,0.55)",
+        fontSize:       22,
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "center",
+        cursor:         "pointer",
+        zIndex:         100,
+        boxShadow:      paused ? "0 0 12px rgba(0,255,65,0.35)" : "none",
+        transition:     "border-color 0.15s, color 0.15s, box-shadow 0.15s",
+        backdropFilter: "blur(4px)",
+      }}
+    >
+      {paused ? "▶" : "⏸"}
+    </button>
+  );
+
   // ── Landscape layout (16:9 and wider) ───────────────────────────────────────
 
   if (isLandscape) {
@@ -323,7 +358,7 @@ export default function Monitor() {
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
             <div data-testid="heart-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
-              <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} />
+              <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
             </div>
             <div style={{ display: "flex", gap: 4, padding: "8px 10px", borderTop: "1px solid #0d2a0d", flexShrink: 0, alignItems: "center" }}>
               {rhythmButtons}
@@ -335,14 +370,15 @@ export default function Monitor() {
           {/* Right: waveforms */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0 }}>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
+              <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={abpData} color="#ff4444" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
+              <WaveformCanvas data={abpData} color="#ff4444" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
             </div>
           </div>
 
         </div>
+        {pauseBtn}
       </div>
     );
   }
@@ -538,7 +574,7 @@ export default function Monitor() {
           style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}` }}
           data-testid="heart-panel"
         >
-          <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} />
+          <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
         </div>
 
       </div>
@@ -555,6 +591,7 @@ export default function Monitor() {
             minY={rhythmCfg.ecgMinY}
             maxY={rhythmCfg.ecgMaxY}
             windowSeconds={6}
+            paused={paused}
           />
         </div>
         <div className="flex-1 min-h-0">
@@ -567,10 +604,12 @@ export default function Monitor() {
             minY={rhythmCfg.abpMinY}
             maxY={rhythmCfg.abpMaxY}
             windowSeconds={6}
+            paused={paused}
           />
         </div>
       </div>
     </div>
+    {pauseBtn}
     </div>
   );
 }

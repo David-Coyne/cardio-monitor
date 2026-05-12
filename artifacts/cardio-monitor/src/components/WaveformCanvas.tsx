@@ -13,6 +13,7 @@ interface WaveformCanvasProps {
   labelFontSize?: string;
   valueFontSize?: string;
   unitFontSize?: string;
+  paused?: boolean;
 }
 
 // Real ECG paper speed: 25mm/s
@@ -32,9 +33,13 @@ export function WaveformCanvas({
   labelFontSize = "0.75rem",
   valueFontSize = "1.5rem",
   unitFontSize  = "0.75rem",
+  paused = false,
 }: WaveformCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pausedRef    = useRef(paused);
+  const frozenAtRef  = useRef<number | null>(null);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,8 +70,15 @@ export function WaveformCanvas({
     const samplesOnScreen = Math.floor(data.length * (windowSeconds / 15));
 
     const render = (time: number) => {
-      // Use global performance.now() time for sync across all canvases
-      const elapsed = time % TOTAL_DURATION;
+      // Freeze the timestamp when paused so the trace holds still
+      let elapsed: number;
+      if (pausedRef.current) {
+        if (frozenAtRef.current === null) frozenAtRef.current = time % TOTAL_DURATION;
+        elapsed = frozenAtRef.current;
+      } else {
+        frozenAtRef.current = null;
+        elapsed = time % TOTAL_DURATION;
+      }
       const progress = elapsed / TOTAL_DURATION;
 
       const width = canvas.width;
