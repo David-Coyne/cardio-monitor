@@ -255,8 +255,8 @@ export default function Monitor() {
 
         {/* ── Header ─────────────────────────────────────────────────────────── */}
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "clamp(4px,0.6vh,8px) clamp(12px,1.5vw,24px)", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: "clamp(8px,1.5vw,20px)" }}>
-          <div style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
-            <div style={{ fontSize: "clamp(0.7rem,1.4vw,1.5rem)", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ flex: "1 1 0", minWidth: 0 }}>
+            <div style={{ fontSize: "clamp(0.7rem,1.4vw,1.5rem)", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", wordBreak: "break-word" }}>
               {rhythmCfg.fullName.toUpperCase()}
             </div>
           </div>
@@ -327,10 +327,10 @@ export default function Monitor() {
           flexShrink: 0,
         }}
       >
-        <div style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
+        <div style={{ flex: "1 1 0", minWidth: 0 }}>
           <div
-            className="text-[10px] font-bold tracking-widest whitespace-nowrap overflow-hidden text-ellipsis"
-            style={{ color: isLethal ? "#ff4040" : "#00ff41" }}
+            className="text-[10px] font-bold tracking-widest"
+            style={{ color: isLethal ? "#ff4040" : "#00ff41", wordBreak: "break-word" }}
           >
             {rhythmCfg.fullName.toUpperCase()}
           </div>
