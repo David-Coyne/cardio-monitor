@@ -62,7 +62,7 @@ export default function Monitor() {
   useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
 
   // Regenerate waveform buffer when HR or rhythm changes
-  const { ecgData, abpData, artData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr } =
+  const { ecgData, abpData, artData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr } =
     useMemo(() => generateWaveforms(hr, rhythmType), [hr, rhythmType]);
 
   // Live readout state — updated once per beat
@@ -71,19 +71,26 @@ export default function Monitor() {
     map: Math.round(rhythmCfg.defaultDia + (rhythmCfg.defaultSys - rhythmCfg.defaultDia) / 3),
   });
   const [liveCO, setLiveCO] = useState(rhythmCfg.defaultCO);
+  // Instantaneous HR for AF (varies beat-to-beat)
+  const [liveHR, setLiveHR] = useState(hr);
 
   // Stable refs so the rAF closure always reads the latest data
   const beatSamplesRef = useRef(beatSamples);
   const beatSysRef     = useRef(beatSysArr);
   const beatDiaRef     = useRef(beatDiaArr);
   const beatCORef      = useRef(beatCOArr);
+  const beatLensRef    = useRef(beatLensArr);
 
   useEffect(() => {
     beatSamplesRef.current = beatSamples;
     beatSysRef.current     = beatSysArr;
     beatDiaRef.current     = beatDiaArr;
     beatCORef.current      = beatCOArr;
-  }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr]);
+    beatLensRef.current    = beatLensArr;
+  }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr]);
+
+  // Keep liveHR in sync when rhythm or HR changes (non-AF resets)
+  useEffect(() => { setLiveHR(hr); }, [hr, rhythmType]);
 
   // Single rAF loop — updates readouts once per beat + triggers sounds
   useEffect(() => {
@@ -108,6 +115,14 @@ export default function Monitor() {
         const map = Math.round(dia + (sys - dia) / 3);
         setLiveBP({ sys, dia, map });
         setLiveCO(parseFloat(beatCORef.current[b].toFixed(1)));
+        // AF: instantaneous HR from actual per-beat RR interval
+        if (rhythm === "AF") {
+          const lens = beatLensRef.current;
+          if (lens && lens[b] != null) {
+            // 900 samples = 15 s → 60 samples/s; HR = 60 / (len/60) = 3600/len
+            setLiveHR(Math.round(3600 / lens[b]));
+          }
+        }
         // S1 on every organised beat (not VF — no organised beat)
         if (rhythm !== "VF") playS1Ref.current();
       }
@@ -117,7 +132,6 @@ export default function Monitor() {
         s2Played = true;
         playS2Ref.current();
       }
-
 
       rafId = requestAnimationFrame(tick);
     };
@@ -154,7 +168,7 @@ export default function Monitor() {
   };
 
   // Display helpers
-  const hrDisplay  = isVF ? "---" : rhythmType === "AF" ? `~${hr}` : String(hr);
+  const hrDisplay  = isVF ? "---" : rhythmType === "AF" ? `~${liveHR}` : String(hr);
   const bpDisplay  = isVF ? "40/25" : `${liveBP.sys}/${liveBP.dia}`;
   const mapDisplay = isVF ? "29" : String(liveBP.map);
   const coDisplay  = liveCO.toFixed(1);

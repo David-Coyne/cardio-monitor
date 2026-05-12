@@ -11,6 +11,7 @@ export interface WaveformData {
   beatSysArr: number[];       // ABSOLUTE systolic mmHg per beat
   beatDiaArr: number[];       // ABSOLUTE diastolic mmHg per beat
   beatCOArr:  number[];       // L/min per beat
+  beatLensArr?: number[];     // per-beat RR sample counts (AF only — for instantaneous HR)
 }
 
 export interface RhythmConfig {
@@ -250,9 +251,10 @@ function generateAF(hr: number): WaveformData {
   return {
     ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
     beatSamples: meanBS,
-    beatSysArr: Array.from(beatSys),
-    beatDiaArr: Array.from(beatDia),
-    beatCOArr:  Array.from(beatCO),
+    beatSysArr:  Array.from(beatSys),
+    beatDiaArr:  Array.from(beatDia),
+    beatCOArr:   Array.from(beatCO),
+    beatLensArr: beatLens.slice(0, nBeats),
   };
 }
 
