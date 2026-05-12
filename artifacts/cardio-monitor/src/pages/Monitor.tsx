@@ -243,7 +243,7 @@ export default function Monitor() {
             </div>
           )}
           <div className="flex gap-3 items-end">
-            <div className="flex flex-col items-end leading-none">
+            <div className="flex flex-col items-end leading-none" style={{ minWidth: "2.25rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">HR</span>
               <span
                 className="text-base font-bold"
@@ -261,7 +261,7 @@ export default function Monitor() {
               </span>
               <span className="text-[7px] text-[#ffd700] opacity-60">({mapDisplay})</span>
             </div>
-            <div className="flex flex-col items-end leading-none">
+            <div className="flex flex-col items-end leading-none" style={{ minWidth: "2.25rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
               <span className="text-base font-bold text-[#00e5ff]" data-testid="text-co-value">
                 {coDisplay}
