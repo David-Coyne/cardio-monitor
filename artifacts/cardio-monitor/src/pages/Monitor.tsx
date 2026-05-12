@@ -162,12 +162,12 @@ export default function Monitor() {
           flexShrink: 0,
         }}
       >
-        <div style={{ minWidth: 0, flexShrink: 0 }}>
-          <div className="text-[10px] font-bold tracking-[0.2em] text-gray-300 whitespace-nowrap">
+        <div style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
+          <div className="text-[10px] font-bold tracking-[0.2em] text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis">
             CLINICAL MONITOR
           </div>
           <div
-            className="text-[8px] font-bold tracking-widest mt-0.5 whitespace-nowrap"
+            className="text-[8px] font-bold tracking-widest mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis"
             style={{ color: isLethal ? "#ff4040" : "#00ff41" }}
           >
             {rhythmCfg.fullName.toUpperCase()}
@@ -180,7 +180,7 @@ export default function Monitor() {
           style={{
             border: `1px solid ${isVF ? "rgba(80,80,80,0.3)" : "rgba(0,255,65,0.25)"}`,
             background: isVF ? "rgba(30,30,30,0.3)" : "rgba(0,255,65,0.04)",
-            width: "6.5rem",
+            width: "5.75rem",
             flexShrink: 0,
           }}
         >
@@ -230,7 +230,7 @@ export default function Monitor() {
         </div>
 
         {/* ── Vital signs + alarm ─────────────────────────────────────────── */}
-        <div className="flex flex-col items-end gap-0.5">
+        <div className="flex flex-col items-end gap-0.5" style={{ flexShrink: 0 }}>
           <div
             className="text-[9px] font-bold tracking-widest animate-pulse px-1.5 py-0.5 rounded"
             style={{
@@ -243,8 +243,8 @@ export default function Monitor() {
           >
             ⚠ ALARM
           </div>
-          <div className="flex gap-3 items-end">
-            <div className="flex flex-col items-end leading-none" style={{ minWidth: "2.25rem" }}>
+          <div className="flex gap-2 items-end">
+            <div className="flex flex-col items-end leading-none" style={{ minWidth: "1.875rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">HR</span>
               <span
                 className="text-base font-bold"
@@ -262,7 +262,7 @@ export default function Monitor() {
               </span>
               <span className="text-[7px] text-[#ffd700] opacity-60">({mapDisplay})</span>
             </div>
-            <div className="flex flex-col items-end leading-none" style={{ minWidth: "2.25rem" }}>
+            <div className="flex flex-col items-end leading-none" style={{ minWidth: "1.875rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
               <span className="text-base font-bold text-[#00e5ff]" data-testid="text-co-value">
                 {coDisplay}
