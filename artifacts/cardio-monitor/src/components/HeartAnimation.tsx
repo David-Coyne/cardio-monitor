@@ -20,29 +20,42 @@ function lerp(inp: number[], out: number[], v: number): number {
   return out[out.length - 1];
 }
 
-const lvOut  = [1.00, 1.000, 0.820, 0.760, 0.820, 0.940, 1.020, 1.00];
-const rvOut  = [1.00, 1.000, 0.850, 0.810, 0.850, 0.950, 1.010, 1.00];
-const gSzOut = [3,    8,     22,    22,    14,    6,     3,     3   ];
-const gAlOut = [0.22, 0.55,  1.00,  0.95,  0.55,  0.24,  0.22,  0.22];
-const vtLvOut= [1.00, 0.860, 0.780, 0.760, 0.820, 0.930, 1.010, 1.00];
-const vtRvOut= [1.00, 0.890, 0.820, 0.800, 0.840, 0.940, 1.010, 1.00];
-const vtGSOut= [3,    12,    22,    22,    14,    6,     3,     3   ];
-const vtGAOut= [0.2,  0.65,  1.0,   0.95,  0.55,  0.24,  0.2,   0.2 ];
-const laOut  = [1.00, 1.00, 0.840, 0.870, 1.000, 1.030, 1.00];
-const raOut  = [1.00, 1.00, 0.850, 0.875, 1.000, 1.025, 1.00];
+const lvOut   = [1.00, 1.000, 0.820, 0.760, 0.820, 0.940, 1.020, 1.00];
+const rvOut   = [1.00, 1.000, 0.850, 0.810, 0.850, 0.950, 1.010, 1.00];
+const gSzOut  = [3,    8,     22,    22,    14,    6,     3,     3   ];
+const gAlOut  = [0.22, 0.55,  1.00,  0.95,  0.55,  0.24,  0.22,  0.22];
+const vtLvOut = [1.00, 0.860, 0.780, 0.760, 0.820, 0.930, 1.010, 1.00];
+const vtRvOut = [1.00, 0.890, 0.820, 0.800, 0.840, 0.940, 1.010, 1.00];
+const vtGSOut = [3,    12,    22,    22,    14,    6,     3,     3   ];
+const vtGAOut = [0.2,  0.65,  1.0,   0.95,  0.55,  0.24,  0.2,   0.2 ];
+// PVC: weak ineffective ventricular contraction — scale barely changes (no effective ejection)
+const pvcLvOut = [1.00, 1.000, 0.928, 0.912, 0.928, 0.972, 1.008, 1.00];
+const pvcRvOut = [1.00, 1.000, 0.946, 0.932, 0.946, 0.978, 1.004, 1.00];
+const pvcGSOut = [3,    5,     11,    10,    8,     4,     3,     3   ];
+const pvcGAOut = [0.18, 0.30,  0.52,  0.48,  0.30,  0.18,  0.18,  0.18];
+const laOut   = [1.00, 1.00, 0.840, 0.870, 1.000, 1.030, 1.00];
+const raOut   = [1.00, 1.00, 0.850, 0.875, 1.000, 1.025, 1.00];
 
 function buildKeyframes(hr: number) {
-  const bd   = 60000 / hr;
-  const vSys = Math.min(380 / bd, 0.72);
-  const aSys = Math.min(110 / bd, 0.13);
+  const bd    = 60000 / hr;
+  const vSys  = Math.min(380 / bd, 0.72);
+  const aSys  = Math.min(110 / bd, 0.13);
   const q = 0.255, r = 0.285;
-  const vP = [0, q, r, r+vSys*0.25, r+vSys*0.55, r+vSys*0.85, Math.min(r+vSys,0.98), 1.0];
+  const vP  = [0, q, r, r+vSys*0.25, r+vSys*0.55, r+vSys*0.85, Math.min(r+vSys,0.98), 1.0];
   const vtQ = 0.220, vtSys = Math.min(400/bd, 0.75);
   const vtP = [0, vtQ, r, r+vtSys*0.25, r+vtSys*0.55, r+vtSys*0.85, Math.min(r+vtSys,0.98), 1.0];
+  // PVC: onset earlier (0.18), slightly wider systole (beat is 0.72× normal so relative fraction grows)
+  const pvcQ   = 0.18;
+  const pvcSys = Math.min(420 / (bd * 0.72), 0.82); // systole as fraction of PVC coupling interval
+  // Map into HeartAnimation's normalized phase (which spans the full sinus cycle, not just PVC coupling)
+  // The PVC beat in the waveform spans 0.72×sinus-cycle; in HeartAnimation's phase that's 0→0.72
+  const pvcR = pvcQ + 0.05;
+  const pvcEnd = Math.min(pvcR + pvcSys * 0.72, 0.94); // scale systole into 0→0.72 phase window
+  const pvcP = [0, pvcQ, pvcR, pvcR+(pvcEnd-pvcR)*0.25, pvcR+(pvcEnd-pvcR)*0.55, pvcR+(pvcEnd-pvcR)*0.85, pvcEnd, 1.0];
   const pa  = 0.120;
   const laP = [0, pa, pa+aSys*0.4, pa+aSys*0.7, pa+aSys, 0.72, 1.0];
   const raP = [0, pa-0.01, (pa-0.01)+aSys*0.4, (pa-0.01)+aSys*0.7, (pa-0.01)+aSys, 0.70, 1.0];
-  return { vP, vtP, laP, raP };
+  return { vP, vtP, pvcP, laP, raP };
 }
 
 export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: HeartAnimationProps) {
@@ -60,7 +73,7 @@ export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: H
   const glowFilter = useMotionTemplate`drop-shadow(0 0 ${glowSize}px rgba(220,60,40,${glowAlpha}))`;
 
   useEffect(() => {
-    const { vP, vtP, laP, raP } = buildKeyframes(heartRate);
+    const { vP, vtP, pvcP, laP, raP } = buildKeyframes(heartRate);
     const ejVOut  = [0, 0, 0.5, 1, 0.5, 0, 0, 0];
     const ejVtOut = [0, 0, 0.5, 1, 0.5, 0, 0, 0];
     let rafId: number;
@@ -83,43 +96,75 @@ export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: H
         coroWidth.set(0.9);
         coroOffset.set(-(now/120) % 24);
       } else {
-        const bs    = 3600 / heartRate;
+        const bs     = 3600 / heartRate;
         const sample = ((now % 15000) / 15000) * 900;
+        const b_ha   = Math.floor(sample / bs);       // HeartAnimation beat index
         const phase  = (sample % bs) / bs;
 
-        if (rhythmType === "AF") {
-          const ap = (now % 180) / 180;
-          laScale.set(1 + 0.046*Math.sin(2*Math.PI*ap));
-          raScale.set(1 + 0.040*Math.sin(2*Math.PI*ap+0.5));
-        } else if (rhythmType === "VT" || rhythmType === "SVT") {
-          laScale.set(1.0); raScale.set(1.0);
+        if (rhythmType === "PVC") {
+          // Bigeminy: even beats = normal sinus, odd beats = PVC (premature, ineffective)
+          const isPVCBeat = b_ha % 2 === 1;
+          if (isPVCBeat) {
+            // PVC beat: NO atrial contraction (no P wave), WEAK ventricular contraction
+            laScale.set(1.0);
+            raScale.set(1.0);
+            lvScale.set(lerp(pvcP, pvcLvOut, phase));
+            rvScale.set(lerp(pvcP, pvcRvOut, phase));
+            glowSize.set(lerp(pvcP, pvcGSOut, phase));
+            glowAlpha.set(lerp(pvcP, pvcGAOut, phase));
+            lvFill.set("#c0392b");            // stays dark — ineffective ejection
+            coroAlpha.set(0.20);             // very poor coronary perfusion
+            coroWidth.set(0.7);
+          } else {
+            // Normal sinus beat in bigeminy
+            laScale.set(lerp(laP, laOut, phase));
+            raScale.set(lerp(raP, raOut, phase));
+            lvScale.set(lerp(vP, lvOut, phase));
+            rvScale.set(lerp(vP, rvOut, phase));
+            glowSize.set(lerp(vP, gSzOut, phase));
+            glowAlpha.set(lerp(vP, gAlOut, phase));
+            lvFill.set(lerp(vP, ejVOut, phase) > 0.5 ? "#ff5535" : "#d63027");
+            const r_n = 0.285, bd_n = 60000 / heartRate, vSys_n = Math.min(380/bd_n, 0.72);
+            const inSystole = phase > r_n && phase < r_n + vSys_n * 0.85;
+            coroAlpha.set(inSystole ? 0.30 : 0.82);
+            coroWidth.set(inSystole ? 1.1 : 2.3);
+          }
+          coroOffset.set(-(now / 28) % 24);
         } else {
-          laScale.set(lerp(laP, laOut, phase));
-          raScale.set(lerp(raP, raOut, phase));
-        }
+          if (rhythmType === "AF") {
+            const ap = (now % 180) / 180;
+            laScale.set(1 + 0.046*Math.sin(2*Math.PI*ap));
+            raScale.set(1 + 0.040*Math.sin(2*Math.PI*ap+0.5));
+          } else if (rhythmType === "VT" || rhythmType === "SVT") {
+            laScale.set(1.0); raScale.set(1.0);
+          } else {
+            laScale.set(lerp(laP, laOut, phase));
+            raScale.set(lerp(raP, raOut, phase));
+          }
 
-        if (rhythmType === "VT") {
-          lvScale.set(lerp(vtP, vtLvOut, phase));
-          rvScale.set(lerp(vtP, vtRvOut, phase));
-          glowSize.set(lerp(vtP, vtGSOut, phase));
-          glowAlpha.set(lerp(vtP, vtGAOut, phase));
-          lvFill.set(lerp(vtP, ejVtOut, phase) > 0.5 ? "#ff4a3a" : "#c0392b");
-        } else {
-          lvScale.set(lerp(vP, lvOut, phase));
-          rvScale.set(lerp(vP, rvOut, phase));
-          glowSize.set(lerp(vP, gSzOut, phase));
-          glowAlpha.set(lerp(vP, gAlOut, phase));
-          lvFill.set(lerp(vP, ejVOut, phase) > 0.5 ? "#ff5535" : "#d63027");
-        }
+          if (rhythmType === "VT") {
+            lvScale.set(lerp(vtP, vtLvOut, phase));
+            rvScale.set(lerp(vtP, vtRvOut, phase));
+            glowSize.set(lerp(vtP, vtGSOut, phase));
+            glowAlpha.set(lerp(vtP, vtGAOut, phase));
+            lvFill.set(lerp(vtP, ejVtOut, phase) > 0.5 ? "#ff4a3a" : "#c0392b");
+          } else {
+            lvScale.set(lerp(vP, lvOut, phase));
+            rvScale.set(lerp(vP, rvOut, phase));
+            glowSize.set(lerp(vP, gSzOut, phase));
+            glowAlpha.set(lerp(vP, gAlOut, phase));
+            lvFill.set(lerp(vP, ejVOut, phase) > 0.5 ? "#ff5535" : "#d63027");
+          }
 
-        // Coronary perfusion peaks in DIASTOLE (myocardium relaxes → intramural vessels open)
-        const r    = 0.285;
-        const bd   = 60000 / heartRate;
-        const vSys = Math.min(380/bd, 0.72);
-        const inSystole = phase > r && phase < r + vSys * 0.85;
-        coroAlpha.set(inSystole ? 0.30 : 0.82);
-        coroWidth.set(inSystole ? 1.1 : 2.3);
-        coroOffset.set(-(now / 28) % 24);
+          // Coronary perfusion peaks in DIASTOLE (myocardium relaxes → intramural vessels open)
+          const r    = 0.285;
+          const bd   = 60000 / heartRate;
+          const vSys = Math.min(380/bd, 0.72);
+          const inSystole = phase > r && phase < r + vSys * 0.85;
+          coroAlpha.set(inSystole ? 0.30 : 0.82);
+          coroWidth.set(inSystole ? 1.1 : 2.3);
+          coroOffset.set(-(now / 28) % 24);
+        }
       }
 
       rafId = requestAnimationFrame(tick);

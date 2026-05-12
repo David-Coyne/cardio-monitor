@@ -62,7 +62,7 @@ export default function Monitor() {
   useEffect(() => { rhythmRef.current    = rhythmType; }, [rhythmType]);
 
   // Regenerate waveform buffer when HR or rhythm changes
-  const { ecgData, abpData, artData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr } =
+  const { ecgData, abpData, artData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr, beatTypeArr, beatStartsArr } =
     useMemo(() => generateWaveforms(hr, rhythmType), [hr, rhythmType]);
 
   // Live readout state — updated once per beat
@@ -75,19 +75,23 @@ export default function Monitor() {
   const [liveHR, setLiveHR] = useState(hr);
 
   // Stable refs so the rAF closure always reads the latest data
-  const beatSamplesRef = useRef(beatSamples);
-  const beatSysRef     = useRef(beatSysArr);
-  const beatDiaRef     = useRef(beatDiaArr);
-  const beatCORef      = useRef(beatCOArr);
-  const beatLensRef    = useRef(beatLensArr);
+  const beatSamplesRef  = useRef(beatSamples);
+  const beatSysRef      = useRef(beatSysArr);
+  const beatDiaRef      = useRef(beatDiaArr);
+  const beatCORef       = useRef(beatCOArr);
+  const beatLensRef     = useRef(beatLensArr);
+  const beatTypeRef     = useRef(beatTypeArr);
+  const beatStartsRef   = useRef(beatStartsArr);
 
   useEffect(() => {
-    beatSamplesRef.current = beatSamples;
-    beatSysRef.current     = beatSysArr;
-    beatDiaRef.current     = beatDiaArr;
-    beatCORef.current      = beatCOArr;
-    beatLensRef.current    = beatLensArr;
-  }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr]);
+    beatSamplesRef.current  = beatSamples;
+    beatSysRef.current      = beatSysArr;
+    beatDiaRef.current      = beatDiaArr;
+    beatCORef.current       = beatCOArr;
+    beatLensRef.current     = beatLensArr;
+    beatTypeRef.current     = beatTypeArr;
+    beatStartsRef.current   = beatStartsArr;
+  }, [beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr, beatTypeArr, beatStartsArr]);
 
   // Keep liveHR in sync when rhythm or HR changes (non-AF resets)
   useEffect(() => { setLiveHR(hr); }, [hr, rhythmType]);
@@ -102,9 +106,28 @@ export default function Monitor() {
       const now    = performance.now();
       const sample = ((now % 15000) / 15000) * 900;
       const bs     = beatSamplesRef.current;
-      const b      = Math.min(Math.floor(sample / bs), beatSysRef.current.length - 1);
-      const phase  = (sample - b * bs) / bs;         // 0–1 within current beat
       const rhythm = rhythmRef.current;
+
+      // ── Beat detection: variable boundaries for PVC, uniform for all others ──
+      let b: number;
+      let phase: number;
+
+      if (rhythm === 'PVC' && beatStartsRef.current?.length) {
+        // Binary search for the beat containing `sample`
+        const starts = beatStartsRef.current;
+        let lo = 0, hi = starts.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (starts[mid] <= sample) lo = mid;
+          else hi = mid - 1;
+        }
+        b = Math.min(lo, beatSysRef.current.length - 1);
+        const nextStart = b + 1 < starts.length ? starts[b + 1] : starts[b] + bs;
+        phase = (sample - starts[b]) / (nextStart - starts[b]);
+      } else {
+        b     = Math.min(Math.floor(sample / bs), beatSysRef.current.length - 1);
+        phase = (sample - b * bs) / bs;
+      }
 
       // ── Beat-start: update vitals + play S1 ─────────────────────────────
       if (b !== lastBeat) {
@@ -119,16 +142,17 @@ export default function Monitor() {
         if (rhythm === "AF") {
           const lens = beatLensRef.current;
           if (lens && lens[b] != null) {
-            // 900 samples = 15 s → 60 samples/s; HR = 60 / (len/60) = 3600/len
             setLiveHR(Math.round(3600 / lens[b]));
           }
         }
-        // S1 on every organised beat (not VF — no organised beat)
+        // S1 on every organised beat (not VF)
         if (rhythm !== "VF") playS1Ref.current();
       }
 
       // ── Mid-beat: S2 at end of systole (~phase 0.38) ────────────────────
-      if (rhythm !== "VF" && phase >= 0.38 && !s2Played) {
+      // Suppress S2 on PVC beats (aortic valve barely opens in ineffective contraction)
+      const isPVCBeat = rhythm === 'PVC' && (beatTypeRef.current?.[b] ?? false);
+      if (rhythm !== "VF" && !isPVCBeat && phase >= 0.38 && !s2Played) {
         s2Played = true;
         playS2Ref.current();
       }
