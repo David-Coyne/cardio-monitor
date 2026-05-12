@@ -36,6 +36,7 @@ export default function Monitor() {
   const scale = useMonitorScale();
   const [rhythmType, setRhythmType] = useState<RhythmType>("SR");
   const [hr, setHr] = useState(72);
+  const [hrDraft, setHrDraft] = useState<string | null>(null);
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -129,13 +130,17 @@ export default function Monitor() {
     setLiveCO(cfg.defaultCO);
   };
 
-  const handleHrChange = (raw: string) => {
-    const n = parseInt(raw, 10);
-    if (!isNaN(n)) setHr(clampHR(n, rhythmCfg.hrMin, rhythmCfg.hrMax));
+  const commitHrDraft = () => {
+    if (hrDraft !== null) {
+      const n = parseInt(hrDraft, 10);
+      if (!isNaN(n)) setHr(clampHR(n, rhythmCfg.hrMin, rhythmCfg.hrMax));
+      setHrDraft(null);
+    }
   };
 
   const handleHrStep = (delta: number) => {
     unlockAudio();
+    setHrDraft(null);
     if (!isVF) setHr(h => clampHR(h + delta, rhythmCfg.hrMin, rhythmCfg.hrMax));
   };
 
@@ -199,10 +204,16 @@ export default function Monitor() {
               type="number"
               min={rhythmCfg.hrMin}
               max={rhythmCfg.hrMax}
-              value={isVF ? "" : hr}
+              value={isVF ? "" : (hrDraft !== null ? hrDraft : hr)}
               placeholder={isVF ? "---" : ""}
               disabled={isVF}
-              onChange={e => handleHrChange(e.target.value)}
+              onChange={e => setHrDraft(e.target.value)}
+              onFocus={() => { if (!isVF) setHrDraft(String(hr)); }}
+              onBlur={commitHrDraft}
+              onKeyDown={e => {
+                if (e.key === "Enter") { commitHrDraft(); (e.target as HTMLInputElement).blur(); }
+                if (e.key === "Escape") { setHrDraft(null); (e.target as HTMLInputElement).blur(); }
+              }}
               className="w-11 text-center text-[14px] font-bold bg-transparent outline-none"
               style={{
                 color: "#00ff41",
