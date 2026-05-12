@@ -5,6 +5,8 @@ import type { RhythmType } from "@/lib/rhythmGenerators";
 interface HeartAnimationProps {
   heartRate: number;
   rhythmType: RhythmType;
+  svgWidth?: number;
+  svgHeight?: number;
 }
 
 function lerp(inp: number[], out: number[], v: number): number {
@@ -43,7 +45,7 @@ function buildKeyframes(hr: number) {
   return { vP, vtP, laP, raP };
 }
 
-export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
+export function HeartAnimation({ heartRate, rhythmType, svgWidth, svgHeight }: HeartAnimationProps) {
   const laScale    = useMotionValue(1);
   const raScale    = useMotionValue(1);
   const lvScale    = useMotionValue(1);
@@ -132,8 +134,8 @@ export function HeartAnimation({ heartRate, rhythmType }: HeartAnimationProps) {
   return (
     <div className="flex flex-col items-center" data-testid="heart-animation">
       <motion.svg
-        width="158"
-        height="178"
+        width={svgWidth ?? 158}
+        height={svgHeight ?? 178}
         viewBox="0 0 210 230"
         className="overflow-visible"
         style={{ filter: glowFilter }}

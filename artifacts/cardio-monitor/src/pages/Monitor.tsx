@@ -16,24 +16,33 @@ const clampHR = (v: number, min: number, max: number) =>
 const DESIGN_W = 390;
 const DESIGN_H = 844;
 
-function useMonitorScale() {
-  const calc = () =>
-    typeof window === "undefined"
-      ? 1
-      : Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
-  const [scale, setScale] = useState(calc);
+function useMonitorLayout() {
+  const calc = () => {
+    if (typeof window === "undefined") return { scale: 1, isLandscape: false, heartW: 158, heartH: 178 };
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const isLandscape = vw > vh * 1.2;
+    if (isLandscape) {
+      const leftW = vw * 0.34;
+      const bodyH = vh - 52 - 50; // header + rhythm row
+      const s = Math.min(leftW * 0.75 / 158, bodyH * 0.72 / 178);
+      return { scale: 1, isLandscape: true, heartW: Math.round(158 * s), heartH: Math.round(178 * s) };
+    }
+    return { scale: Math.min(vw / DESIGN_W, vh / DESIGN_H), isLandscape: false, heartW: 158, heartH: 178 };
+  };
+  const [layout, setLayout] = useState(calc);
   useEffect(() => {
-    const onResize = () => setScale(calc);
+    const onResize = () => setLayout(calc);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  return scale;
+  return layout;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Monitor() {
-  const scale = useMonitorScale();
+  const { scale, isLandscape, heartW, heartH } = useMonitorLayout();
   const [rhythmType, setRhythmType] = useState<RhythmType>("SR");
   const [hr, setHr] = useState(72);
   const [hrDraft, setHrDraft] = useState<string | null>(null);
@@ -150,7 +159,158 @@ export default function Monitor() {
   const mapDisplay = isVF ? "29" : String(liveBP.map);
   const coDisplay  = liveCO.toFixed(1);
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Shared sub-elements ─────────────────────────────────────────────────────
+
+  const rhythmButtons = RHYTHM_CONFIGS.map(cfg => {
+    const active = rhythmType === cfg.type;
+    const danger = cfg.isLethal;
+    const col    = danger ? "#ff5555" : "#00ff41";
+    return (
+      <button
+        key={cfg.type}
+        data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
+        onClick={() => handleRhythmChange(cfg.type)}
+        style={{
+          flex: 1,
+          fontSize: "0.6rem",
+          fontWeight: "bold",
+          padding: "3px 0",
+          borderRadius: "3px",
+          letterSpacing: "0.05em",
+          cursor: "pointer",
+          transition: "all 0.15s",
+          color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
+          background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
+          border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
+          boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
+        }}
+      >
+        {cfg.label}
+      </button>
+    );
+  });
+
+  const soundBtn = (
+    <button
+      data-testid="button-sound-toggle"
+      onClick={() => { unlockAudio(); toggleMute(); }}
+      style={{
+        width: 40,
+        flexShrink: 0,
+        fontSize: "0.55rem",
+        fontWeight: "bold",
+        borderRadius: "3px",
+        padding: "2px 0",
+        letterSpacing: "0.05em",
+        cursor: "pointer",
+        color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
+        background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
+        border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
+      }}
+    >
+      {muted ? "SND\nOFF" : "SND\nON"}
+    </button>
+  );
+
+  const setHrBox = (fontSize = "0.75rem") => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "4px 10px", border: "1px solid rgba(0,255,65,0.25)", background: "rgba(0,255,65,0.04)", borderRadius: "4px", flexShrink: 0 }}>
+      <span style={{ fontSize: "0.55rem", letterSpacing: "0.15em", color: "#6b7280" }}>SET HR</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <button data-testid="button-hr-decrease" onClick={() => handleHrStep(-1)} disabled={isVF}
+          style={{ width: 22, height: 22, borderRadius: 3, fontWeight: "bold", fontSize: "0.75rem", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>−</button>
+        <input
+          data-testid="input-heart-rate"
+          type="number" min={rhythmCfg.hrMin} max={rhythmCfg.hrMax}
+          value={isVF ? "" : (hrDraft !== null ? hrDraft : hr)}
+          placeholder={isVF ? "---" : ""}
+          disabled={isVF}
+          onChange={e => setHrDraft(e.target.value)}
+          onFocus={() => { if (!isVF) setHrDraft(String(hr)); }}
+          onBlur={commitHrDraft}
+          onKeyDown={e => { if (e.key === "Enter") { commitHrDraft(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { setHrDraft(null); (e.target as HTMLInputElement).blur(); } }}
+          style={{ width: 44, textAlign: "center", fontSize, fontWeight: "bold", background: "transparent", outline: "none", color: "#00ff41", MozAppearance: "textfield" } as React.CSSProperties}
+        />
+        <button data-testid="button-hr-increase" onClick={() => handleHrStep(+1)} disabled={isVF}
+          style={{ width: 22, height: 22, borderRadius: 3, fontWeight: "bold", fontSize: "0.75rem", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>+</button>
+      </div>
+      <span style={{ fontSize: "0.55rem", color: "#00ff41", opacity: 0.6, whiteSpace: "nowrap" }}>
+        {isVF ? "N/A" : `${rhythmCfg.hrMin}–${rhythmCfg.hrMax} bpm`}
+      </span>
+    </div>
+  );
+
+  // ── Landscape layout (16:9 and wider) ───────────────────────────────────────
+
+  if (isLandscape) {
+    const vitalCol = (label: string, value: string, sub: string, color: string, minW = "3rem") => (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1, minWidth: minW }}>
+        <span style={{ fontSize: "0.6rem", color: "#6b7280", letterSpacing: "0.15em" }}>{label}</span>
+        <span style={{ fontSize: "1.4rem", fontWeight: "bold", color }}>{value}</span>
+        <span style={{ fontSize: "0.55rem", color, opacity: 0.65 }}>{sub}</span>
+      </div>
+    );
+
+    return (
+      <div data-testid="monitor-root" style={{ width: "100vw", height: "100dvh", display: "flex", flexDirection: "column", background: "#080c10", color: "white", fontFamily: "monospace", userSelect: "none", overflow: "hidden" }}>
+
+        {/* ── Header ─────────────────────────────────────────────────────────── */}
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 20px", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: 16 }}>
+          <div style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden" }}>
+            <div style={{ fontSize: "0.9rem", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {rhythmCfg.fullName.toUpperCase()}
+            </div>
+          </div>
+          {setHrBox("1rem")}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+            <div style={{
+              fontSize: "0.7rem", fontWeight: "bold", letterSpacing: "0.15em", padding: "2px 8px", borderRadius: 3,
+              color: "#ff4040", background: isLethal ? "rgba(255,64,64,0.12)" : "transparent",
+              border: `1px solid ${isLethal ? "rgba(255,64,64,0.4)" : "transparent"}`,
+              visibility: isLethal ? "visible" : "hidden",
+              animation: isLethal ? "pulse 1s infinite" : "none",
+            }} data-testid="alarm-indicator">⚠ ALARM</div>
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-end" }}>
+              {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41", "2.5rem")}
+              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ffd700", "4.5rem")}
+              {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff", "2.5rem")}
+            </div>
+          </div>
+        </header>
+
+        {/* ── Body ───────────────────────────────────────────────────────────── */}
+        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+
+          {/* Left: heart + controls */}
+          <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
+            <div data-testid="heart-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
+              <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} />
+            </div>
+            <div style={{ display: "flex", gap: 4, padding: "8px 10px", borderTop: "1px solid #0d2a0d", flexShrink: 0, alignItems: "center" }}>
+              {rhythmButtons}
+              <div style={{ width: 1, alignSelf: "stretch", background: "#1a3a1a", margin: "0 2px" }} />
+              {soundBtn}
+            </div>
+          </div>
+
+          {/* Right: waveforms */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0 }}>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} />
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <WaveformCanvas data={abpData} color="#ffd700" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} />
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <WaveformCanvas data={artData} color="#00e5ff" label="ART" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} />
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  // ── Portrait layout ──────────────────────────────────────────────────────────
 
   return (
     <div style={{ width: "100vw", height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080c10", overflow: "hidden" }}>
