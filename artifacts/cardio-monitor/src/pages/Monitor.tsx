@@ -195,7 +195,7 @@ export default function Monitor() {
       data-testid="button-sound-toggle"
       onClick={() => { unlockAudio(); toggleMute(); }}
       style={{
-        width: "clamp(28px, 3.5vw, 44px)",
+        width: "clamp(38px, 5vw, 58px)",
         flexShrink: 0,
         fontSize: "clamp(0.45rem, 0.85vw, 0.7rem)",
         fontWeight: "bold",
@@ -203,12 +203,14 @@ export default function Monitor() {
         padding: "2px 0",
         letterSpacing: "0.05em",
         cursor: "pointer",
+        lineHeight: 1.2,
         color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
         background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
         border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
       }}
     >
-      {muted ? "SND\nOFF" : "SND\nON"}
+      <div>SOUND</div>
+      <div>{muted ? "OFF" : "ON"}</div>
     </button>
   );
 
@@ -478,14 +480,16 @@ export default function Monitor() {
           title={muted ? "Sound off — click to enable" : "Sound on — click to mute"}
           className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
           style={{
-            width: 34,
+            width: 44,
             flexShrink: 0,
+            lineHeight: 1.2,
             color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
             background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
             border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
           }}
         >
-          {muted ? "SND\nOFF" : "SND\nON"}
+          <div>SOUND</div>
+          <div>{muted ? "OFF" : "ON"}</div>
         </button>
       </div>
 
