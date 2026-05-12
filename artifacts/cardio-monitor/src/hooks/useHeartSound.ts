@@ -99,8 +99,8 @@ function synthAlarm(ctx: AudioContext, vol = 0.12, isVF = true) {
 export function useHeartSound() {
   const ctxRef      = useRef<AudioContext | null>(null);
   const unlockedRef = useRef(false);
-  const mutedRef    = useRef(false);
-  const [muted, setMuted] = useState(false);
+  const mutedRef    = useRef(true);
+  const [muted, setMuted] = useState(true);
 
   // Must be called inside a user-gesture handler (click, pointerdown, etc.)
   // so the browser permits AudioContext creation / resumption.
