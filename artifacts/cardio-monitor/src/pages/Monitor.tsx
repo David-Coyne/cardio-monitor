@@ -178,8 +178,8 @@ export default function Monitor() {
         <div
           className="flex flex-col items-center px-2 py-0.5 rounded"
           style={{
-            border: `1px solid ${isVF ? "rgba(80,80,80,0.3)" : "rgba(0,255,65,0.25)"}`,
-            background: isVF ? "rgba(30,30,30,0.3)" : "rgba(0,255,65,0.04)",
+            border: "1px solid rgba(0,255,65,0.25)",
+            background: "rgba(0,255,65,0.04)",
             width: "5.75rem",
             flexShrink: 0,
           }}
@@ -192,9 +192,9 @@ export default function Monitor() {
               disabled={isVF}
               className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center"
               style={{
-                color: isVF ? "#444" : "#00ff41",
-                background: isVF ? "transparent" : "rgba(0,255,65,0.1)",
-                border: `1px solid ${isVF ? "#333" : "rgba(0,255,65,0.3)"}`,
+                color: "#00ff41",
+                background: "rgba(0,255,65,0.1)",
+                border: "1px solid rgba(0,255,65,0.3)",
               }}
             >−</button>
             <input
@@ -208,7 +208,7 @@ export default function Monitor() {
               onChange={e => handleHrChange(e.target.value)}
               className="w-11 text-center text-[14px] font-bold bg-transparent outline-none"
               style={{
-                color: isVF ? "#555" : "#00ff41",
+                color: "#00ff41",
                 MozAppearance: "textfield",
               } as React.CSSProperties}
             />
@@ -218,13 +218,13 @@ export default function Monitor() {
               disabled={isVF}
               className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center"
               style={{
-                color: isVF ? "#444" : "#00ff41",
-                background: isVF ? "transparent" : "rgba(0,255,65,0.1)",
-                border: `1px solid ${isVF ? "#333" : "rgba(0,255,65,0.3)"}`,
+                color: "#00ff41",
+                background: "rgba(0,255,65,0.1)",
+                border: "1px solid rgba(0,255,65,0.3)",
               }}
             >+</button>
           </div>
-          <span className="text-[7px] opacity-60 mt-0.5 whitespace-nowrap" style={{ color: isVF ? "#555" : "#00ff41" }}>
+          <span className="text-[7px] opacity-60 mt-0.5 whitespace-nowrap" style={{ color: "#00ff41" }}>
             {isVF ? "N/A" : `${rhythmCfg.hrMin}–${rhythmCfg.hrMax} bpm`}
           </span>
         </div>
