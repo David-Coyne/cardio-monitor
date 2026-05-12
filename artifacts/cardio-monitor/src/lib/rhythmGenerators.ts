@@ -95,6 +95,29 @@ function artSampleVT(bp: number, sys: number, dia: number): number {
   return v;
 }
 
+// ── ABP channel — invasive arterial-line style waveform ───────────────────────
+// Sharp upstroke, narrow systolic peak, prominent dicrotic notch (~30 % PP),
+// small dicrotic rebound wave, smooth exponential diastolic decay to baseline.
+function abpSample(bp: number, sys: number, dia: number): number {
+  const pp = sys - dia;
+  let v = dia;
+  v += gaussian(bp, 0.358, 0.022, pp);           // systolic peak (fast upstroke)
+  v += gaussian(bp, 0.326, 0.013, pp * 0.068);   // anachrotic shoulder on upstroke
+  v -= gaussian(bp, 0.506, 0.010, pp * 0.315);   // dicrotic notch (aortic valve closure)
+  v += gaussian(bp, 0.562, 0.030, pp * 0.088);   // dicrotic wave (aortic elastic recoil)
+  return v;
+}
+
+// Blunted variant for reduced-output rhythms (VT, SVT, PVC ectopic beats)
+function abpSampleWeak(bp: number, sys: number, dia: number): number {
+  const pp = sys - dia;
+  let v = dia;
+  v += gaussian(bp, 0.400, 0.034, pp);           // broader, slightly lower peak
+  v -= gaussian(bp, 0.528, 0.013, pp * 0.175);   // shallow dicrotic notch
+  v += gaussian(bp, 0.592, 0.036, pp * 0.050);   // faint dicrotic wave
+  return v;
+}
+
 // ── Sinus family (SR, ST, SB) ─────────────────────────────────────────────────
 
 function generateSinus(
@@ -147,15 +170,9 @@ function generateSinus(
 
     const sys = beatSys[bi];
     const dia = beatDia[bi];
-    let a = dia;
-    a += gaussian(bp, 0.38,  0.048, sys - dia - 5);
-    a -= gaussian(bp, 0.54,  0.014, 8);
-    a += gaussian(bp, 0.62,  0.07,  (sys - dia) * 0.18);
-    abp[i] = a;
-
+    abp[i] = abpSample(bp, sys, dia);
     art[i] = artSample(bp, sys, dia);
-
-    co[i] = gaussian(bp, 0.44, 0.075, beatCO[bi]);
+    co[i]  = gaussian(bp, 0.44, 0.075, beatCO[bi]);
   }
 
   return {
@@ -240,15 +257,9 @@ function generateAF(hr: number): WaveformData {
 
     const sys = beatSys[bi];
     const dia = beatDia[bi];
-    let a = dia;
-    a += gaussian(bp, 0.38, 0.050, sys - dia - 5);
-    a -= gaussian(bp, 0.54, 0.014, 8);
-    a += gaussian(bp, 0.62, 0.07,  (sys - dia) * 0.18);
-    abp[i] = a;
-
+    abp[i] = abpSample(bp, sys, dia);
     art[i] = artSample(bp, sys, dia);
-
-    co[i] = gaussian(bp, 0.44, 0.075, beatCO[bi]);
+    co[i]  = gaussian(bp, 0.44, 0.075, beatCO[bi]);
   }
 
   return {
@@ -291,12 +302,7 @@ function generateSVT(hr: number): WaveformData {
 
     const sys = beatSys[bi];
     const dia = beatDia[bi];
-    let a = dia;
-    a += gaussian(bp, 0.38, 0.048, sys - dia - 5);
-    a -= gaussian(bp, 0.54, 0.014, 6);
-    a += gaussian(bp, 0.62, 0.07,  (sys - dia) * 0.15);
-    abp[i] = a;
-
+    abp[i] = abpSample(bp, sys, dia);
     art[i] = artSample(bp, sys, dia);
 
     co[i] = gaussian(bp, 0.44, 0.075, beatCO[bi]);
@@ -339,12 +345,7 @@ function generateVT(hr: number): WaveformData {
 
     const sys = beatSys[bi];
     const dia = beatDia[bi];
-    let a = dia;
-    a += gaussian(bp, 0.40, 0.050, sys - dia - 5);
-    a -= gaussian(bp, 0.56, 0.014, 5);
-    a += gaussian(bp, 0.65, 0.07,  (sys - dia) * 0.14);
-    abp[i] = a;
-
+    abp[i] = abpSampleWeak(bp, sys, dia);
     art[i] = artSampleVT(bp, sys, dia);
 
     co[i] = gaussian(bp, 0.46, 0.080, beatCO[bi]);
@@ -486,16 +487,10 @@ function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: numbe
     const dia = bDia[bi];
     if (isPVC_) {
       // Very blunted pulse — mostly pulseless, small arterial blip
-      let a = dia;
-      a += gaussian(bp, 0.44, 0.075, (sys - dia) * 0.85);
-      abp[i] = a;
+      abp[i] = abpSampleWeak(bp, sys, dia);
       art[i] = artSampleVT(bp, sys, dia);
     } else {
-      let a = dia;
-      a += gaussian(bp, 0.38, 0.048, sys - dia - 5);
-      a -= gaussian(bp, 0.54, 0.014, 8);
-      a += gaussian(bp, 0.62, 0.07,  (sys - dia) * 0.18);
-      abp[i] = a;
+      abp[i] = abpSample(bp, sys, dia);
       art[i] = artSample(bp, sys, dia);
     }
     co[i] = gaussian(bp, 0.44, 0.075, bCO[bi]);
