@@ -96,25 +96,25 @@ function artSampleVT(bp: number, sys: number, dia: number): number {
 }
 
 // ── ABP channel — invasive arterial-line style waveform ───────────────────────
-// Sharp upstroke, narrow systolic peak, prominent dicrotic notch (~30 % PP),
-// small dicrotic rebound wave, smooth exponential diastolic decay to baseline.
+// Rounded systolic peak, anachrotic shoulder on upstroke, gentle dicrotic
+// shoulder (~22 % PP) rather than a sharp V-notch, smooth diastolic decay.
 function abpSample(bp: number, sys: number, dia: number): number {
   const pp = sys - dia;
   let v = dia;
-  v += gaussian(bp, 0.358, 0.022, pp);           // systolic peak (fast upstroke)
-  v += gaussian(bp, 0.326, 0.013, pp * 0.068);   // anachrotic shoulder on upstroke
-  v -= gaussian(bp, 0.506, 0.010, pp * 0.315);   // dicrotic notch (aortic valve closure)
-  v += gaussian(bp, 0.562, 0.030, pp * 0.088);   // dicrotic wave (aortic elastic recoil)
+  v += gaussian(bp, 0.355, 0.028, pp);           // systolic peak — rounded top
+  v += gaussian(bp, 0.320, 0.012, pp * 0.060);   // anachrotic shoulder (upstroke inflection)
+  v -= gaussian(bp, 0.508, 0.014, pp * 0.225);   // dicrotic notch — gentle shoulder
+  v += gaussian(bp, 0.568, 0.032, pp * 0.095);   // dicrotic wave (aortic recoil hump)
   return v;
 }
 
-// Blunted variant for reduced-output rhythms (VT, SVT, PVC ectopic beats)
+// Blunted variant for reduced-output rhythms (VT, PVC ectopic beats)
 function abpSampleWeak(bp: number, sys: number, dia: number): number {
   const pp = sys - dia;
   let v = dia;
-  v += gaussian(bp, 0.400, 0.034, pp);           // broader, slightly lower peak
-  v -= gaussian(bp, 0.528, 0.013, pp * 0.175);   // shallow dicrotic notch
-  v += gaussian(bp, 0.592, 0.036, pp * 0.050);   // faint dicrotic wave
+  v += gaussian(bp, 0.400, 0.038, pp);           // broader, lower peak
+  v -= gaussian(bp, 0.528, 0.015, pp * 0.130);   // very shallow notch
+  v += gaussian(bp, 0.592, 0.038, pp * 0.045);   // faint dicrotic wave
   return v;
 }
 

@@ -311,7 +311,7 @@ export default function Monitor() {
             }} data-testid="alarm-indicator">⚠ ALARM</div>
             <div style={{ display: "flex", gap: "clamp(10px,1.8vw,28px)", alignItems: "flex-end" }}>
               {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41", "clamp(2.2rem,4.5vw,5rem)")}
-              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ffd700", "clamp(4rem,8vw,9rem)")}
+              {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ff4444", "clamp(4rem,8vw,9rem)")}
               {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff", "clamp(2rem,4vw,4.5rem)")}
             </div>
           </div>
@@ -338,7 +338,7 @@ export default function Monitor() {
               <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <WaveformCanvas data={abpData} color="#ffd700" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
+              <WaveformCanvas data={abpData} color="#ff4444" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               <WaveformCanvas data={artData} color="#00e5ff" label="ART" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" />
@@ -465,10 +465,10 @@ export default function Monitor() {
             </div>
             <div className="flex flex-col items-end leading-none" style={{ minWidth: "3.75rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">ABP</span>
-              <span className="text-base font-bold text-[#ffd700]" data-testid="text-abp-value">
+              <span className="text-base font-bold text-[#ff4444]" data-testid="text-abp-value">
                 {bpDisplay}
               </span>
-              <span className="text-[7px] text-[#ffd700] opacity-60">({mapDisplay})</span>
+              <span className="text-[7px] text-[#ff4444] opacity-60">({mapDisplay})</span>
             </div>
             <div className="flex flex-col items-end leading-none" style={{ minWidth: "1.875rem" }}>
               <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
@@ -563,7 +563,7 @@ export default function Monitor() {
         <div className="flex-1 min-h-0">
           <WaveformCanvas
             data={abpData}
-            color="#ffd700"
+            color="#ff4444"
             label="ABP"
             value={bpDisplay}
             unit={`(${mapDisplay})`}
