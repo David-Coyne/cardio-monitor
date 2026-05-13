@@ -117,7 +117,10 @@ export function useHeartSound() {
 
   const safe = (fn: (ctx: AudioContext) => void) => {
     if (mutedRef.current || !unlockedRef.current || !ctxRef.current) return;
-    try { fn(ctxRef.current); } catch { /* ignore */ }
+    const ctx = ctxRef.current;
+    if (ctx.state === "closed") return;
+    if (ctx.state === "suspended") ctx.resume();
+    try { fn(ctx); } catch { /* ignore */ }
   };
 
   const playS1    = useCallback(() => safe(ctx => synthS1(ctx)),           []);
