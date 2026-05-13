@@ -289,25 +289,24 @@ export default function Monitor() {
       onClick={() => setPaused(p => !p)}
       aria-label={paused ? "Resume" : "Pause"}
       style={{
-        position:       "fixed",
-        top:            "50%",
-        left:           "50%",
-        transform:      "translate(-50%, -50%)",
-        width:          52,
-        height:         52,
+        position:       "absolute",
+        bottom:         7,
+        left:           7,
+        width:          30,
+        height:         30,
         borderRadius:   "50%",
-        background:     "rgba(0,0,0,0.55)",
-        border:         `1.5px solid ${paused ? "#00ff41" : "rgba(0,255,65,0.35)"}`,
-        color:          paused ? "#00ff41" : "rgba(255,255,255,0.55)",
-        fontSize:       22,
+        background:     "rgba(0,0,0,0.60)",
+        border:         `1px solid ${paused ? "#00ff41" : "rgba(0,255,65,0.30)"}`,
+        color:          paused ? "#00ff41" : "rgba(255,255,255,0.45)",
+        fontSize:       13,
         display:        "flex",
         alignItems:     "center",
         justifyContent: "center",
         cursor:         "pointer",
-        zIndex:         100,
-        boxShadow:      paused ? "0 0 12px rgba(0,255,65,0.35)" : "none",
+        zIndex:         10,
+        boxShadow:      paused ? "0 0 8px rgba(0,255,65,0.30)" : "none",
         transition:     "border-color 0.15s, color 0.15s, box-shadow 0.15s",
-        backdropFilter: "blur(4px)",
+        backdropFilter: "blur(3px)",
       }}
     >
       {paused ? "▶" : "⏸"}
@@ -369,8 +368,9 @@ export default function Monitor() {
 
           {/* Right: waveforms */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0 }}>
-            <div style={{ flex: 1, minHeight: 0 }}>
+            <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
               <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
+              {pauseBtn}
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               <WaveformCanvas data={abpData} color="#ff4444" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
@@ -378,7 +378,6 @@ export default function Monitor() {
           </div>
 
         </div>
-        {pauseBtn}
       </div>
     );
   }
@@ -581,7 +580,7 @@ export default function Monitor() {
 
       {/* ── Waveform panels ─────────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 gap-1 px-2 pb-2 pt-1 min-h-0">
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0" style={{ position: "relative" }}>
           <WaveformCanvas
             data={ecgData}
             color={isLethal ? "#ff4040" : "#00ff41"}
@@ -593,6 +592,7 @@ export default function Monitor() {
             windowSeconds={6}
             paused={paused}
           />
+          {pauseBtn}
         </div>
         <div className="flex-1 min-h-0">
           <WaveformCanvas
@@ -609,7 +609,6 @@ export default function Monitor() {
         </div>
       </div>
     </div>
-    {pauseBtn}
     </div>
   );
 }
