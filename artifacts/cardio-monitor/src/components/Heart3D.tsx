@@ -9,7 +9,7 @@
  * X-axis drag rotates the heart; beat/rhythm drive the animation.
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import type { RhythmType } from "@/lib/rhythmGenerators";
 
 interface Heart3DProps {
@@ -319,6 +319,7 @@ export function Heart3D({
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const xRotRef     = useRef(0.0);
   const dragRef     = useRef<{ y: number } | null>(null);
+  const [xRotDeg, setXRotDeg] = useState(0); // slider state in degrees
   const pausedRef   = useRef(paused);
   const hrRef       = useRef(heartRate);
   const rhythmRef   = useRef(rhythmType);
@@ -444,6 +445,7 @@ export function Heart3D({
     const dy = e.clientY - dragRef.current.y;
     xRotRef.current = Math.max(-Math.PI * 0.52, Math.min(Math.PI * 0.52, xRotRef.current + dy * 0.013));
     dragRef.current.y = e.clientY;
+    setXRotDeg(Math.round(xRotRef.current * 180 / Math.PI));
   }, []);
 
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
@@ -478,9 +480,37 @@ export function Heart3D({
           </div>
         )}
 
-        {/* Drag hint */}
-        <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", fontSize: 6, fontFamily: "monospace", color: "rgba(90,155,90,0.45)", whiteSpace: "nowrap", pointerEvents: "none" }}>
-          ↕ drag to rotate
+      </div>
+
+      {/* X-axis rotation slider */}
+      <div style={{ width: w, marginTop: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 6 }}>
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap" }}>X</span>
+          <input
+            type="range"
+            min={-90}
+            max={90}
+            step={1}
+            value={xRotDeg}
+            onChange={e => {
+              const deg = Number(e.target.value);
+              setXRotDeg(deg);
+              xRotRef.current = deg * Math.PI / 180;
+            }}
+            style={{
+              flex: 1,
+              appearance: "none",
+              WebkitAppearance: "none",
+              height: 3,
+              borderRadius: 2,
+              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((xRotDeg + 90) / 180) * 100}%, rgba(40,60,40,0.6) ${((xRotDeg + 90) / 180) * 100}%)`,
+              outline: "none",
+              cursor: "pointer",
+            }}
+          />
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 22, textAlign: "right" }}>
+            {xRotDeg > 0 ? `+${xRotDeg}°` : `${xRotDeg}°`}
+          </span>
         </div>
       </div>
 
