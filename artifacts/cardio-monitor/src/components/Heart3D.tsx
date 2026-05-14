@@ -62,12 +62,17 @@ precision highp float;
 uniform vec2  u_res;
 uniform float u_beat;
 uniform float u_xRot;
+uniform float u_yRot;
 uniform float u_time;
 uniform int   u_rhythm;
 
 mat3 rotX(float a) {
   float c = cos(a), s = sin(a);
   return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c);
+}
+mat3 rotY(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c);
 }
 float smin(float a, float b, float k) {
   float h = max(k - abs(a-b), 0.0) / k;
@@ -113,7 +118,7 @@ float shd(vec3 ro, vec3 rd, float b) {
 }
 void main() {
   vec2 uv = (gl_FragCoord.xy/u_res)*2.0-1.0; uv.x *= u_res.x/u_res.y;
-  mat3 R=rotX(u_xRot), iR=rotX(-u_xRot);
+  mat3 R=rotY(u_yRot)*rotX(u_xRot), iR=rotX(-u_xRot)*rotY(-u_yRot);
   vec3 ro_w=vec3(0.0,0.04,2.85), rd_w=normalize(vec3(uv,-1.76));
   vec3 ro=iR*ro_w, rd=iR*rd_w;
   float t=0.22; bool hit=false;
@@ -183,6 +188,7 @@ function draw2D(
   cw: number, ch: number,
   beat: number,
   xRot: number,
+  yRot: number,
   rhythmType: RhythmType,
 ) {
   ctx.clearRect(0, 0, cw, ch);
@@ -196,6 +202,8 @@ function draw2D(
   const bs = 1 + beat * 0.038;
   // X-axis rotation → foreshorten vertically
   const cosX = Math.max(0.15, Math.cos(xRot));
+  // Y-axis rotation → foreshorten horizontally
+  const cosY = Math.max(0.15, Math.cos(yRot));
 
   // Color theme
   const isVF = rhythmType === "VF";
@@ -208,7 +216,7 @@ function draw2D(
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.scale(bs, bs * (0.68 + 0.32 * cosX));
+  ctx.scale(bs * (0.68 + 0.32 * cosY), bs * (0.68 + 0.32 * cosX));
 
   // ── Layer 1: base fill (deep radial gradient) ─────────────────────────────
   const g1 = ctx.createRadialGradient(-rw*0.18, -rh*0.12, rh*0.08, -rw*0.18, -rh*0.12, rh*1.15);
@@ -318,8 +326,10 @@ export function Heart3D({
 
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const xRotRef     = useRef(0.0);
+  const yRotRef     = useRef(0.0);
   const dragRef     = useRef<{ y: number } | null>(null);
   const [xRotDeg, setXRotDeg] = useState(0); // slider state in degrees
+  const [yRotDeg, setYRotDeg] = useState(0); // slider state in degrees
   const pausedRef   = useRef(paused);
   const hrRef       = useRef(heartRate);
   const rhythmRef   = useRef(rhythmType);
@@ -372,6 +382,7 @@ export function Heart3D({
       gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
       const uBeat   = gl.getUniformLocation(prog, "u_beat")!;
       const uXRot   = gl.getUniformLocation(prog, "u_xRot")!;
+      const uYRot   = gl.getUniformLocation(prog, "u_yRot")!;
       const uTime   = gl.getUniformLocation(prog, "u_time")!;
       const uRhythm = gl.getUniformLocation(prog, "u_rhythm")!;
       const uRes    = gl.getUniformLocation(prog, "u_res")!;
@@ -395,6 +406,7 @@ export function Heart3D({
         const rhythm = rhythmRef.current === "VF" ? 1 : rhythmRef.current === "VT" ? 2 : 0;
         gl.uniform1f(uBeat, beat);
         gl.uniform1f(uXRot, xRotRef.current);
+        gl.uniform1f(uYRot, yRotRef.current);
         gl.uniform1f(uTime, now / 1000);
         gl.uniform1i(uRhythm, rhythm);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -425,7 +437,7 @@ export function Heart3D({
       setSize2(wRef.current, hRef.current);
       const now  = performance.now();
       const beat = pausedRef.current ? 0 : getBeatStrength(now, hrRef.current, rhythmRef.current);
-      draw2D(ctx2, canvas.width / dpr, canvas.height / dpr, beat, xRotRef.current, rhythmRef.current);
+      draw2D(ctx2, canvas.width / dpr, canvas.height / dpr, beat, xRotRef.current, yRotRef.current, rhythmRef.current);
       rafRef.current = requestAnimationFrame(render2);
     };
     rafRef.current = requestAnimationFrame(render2);
@@ -482,10 +494,11 @@ export function Heart3D({
 
       </div>
 
-      {/* X-axis rotation slider */}
-      <div style={{ width: w, marginTop: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+      {/* Rotation sliders */}
+      <div style={{ width: w, marginTop: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        {/* X-axis */}
         <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 6 }}>
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap" }}>X</span>
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap", minWidth: 8 }}>X</span>
           <input
             type="range"
             min={-90}
@@ -510,6 +523,35 @@ export function Heart3D({
           />
           <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 22, textAlign: "right" }}>
             {xRotDeg > 0 ? `+${xRotDeg}°` : `${xRotDeg}°`}
+          </span>
+        </div>
+        {/* Y-axis */}
+        <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 6 }}>
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap", minWidth: 8 }}>Y</span>
+          <input
+            type="range"
+            min={-90}
+            max={90}
+            step={1}
+            value={yRotDeg}
+            onChange={e => {
+              const deg = Number(e.target.value);
+              setYRotDeg(deg);
+              yRotRef.current = deg * Math.PI / 180;
+            }}
+            style={{
+              flex: 1,
+              appearance: "none",
+              WebkitAppearance: "none",
+              height: 3,
+              borderRadius: 2,
+              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((yRotDeg + 90) / 180) * 100}%, rgba(40,60,40,0.6) ${((yRotDeg + 90) / 180) * 100}%)`,
+              outline: "none",
+              cursor: "pointer",
+            }}
+          />
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 22, textAlign: "right" }}>
+            {yRotDeg > 0 ? `+${yRotDeg}°` : `${yRotDeg}°`}
           </span>
         </div>
       </div>
