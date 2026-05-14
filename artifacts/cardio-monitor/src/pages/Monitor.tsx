@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
-import { HeartAnimation } from "@/components/HeartAnimation";
+import { Heart3D } from "@/components/Heart3D";
 import {
   type RhythmType,
   RHYTHM_CONFIGS,
@@ -357,7 +357,7 @@ export default function Monitor() {
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
             <div data-testid="heart-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
-              <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
+              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
             </div>
             <div style={{ display: "flex", gap: 4, padding: "8px 10px", borderTop: "1px solid #0d2a0d", flexShrink: 0, alignItems: "center" }}>
               {rhythmButtons}
@@ -573,7 +573,7 @@ export default function Monitor() {
           style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}` }}
           data-testid="heart-panel"
         >
-          <HeartAnimation heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
+          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
         </div>
 
       </div>
