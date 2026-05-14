@@ -346,7 +346,6 @@ export default function Monitor() {
             <div style={{ display: "flex", gap: "clamp(10px,1.8vw,28px)", alignItems: "flex-end" }}>
               {vitalCol("HR",  hrDisplay,  "bpm",    isVF ? "#555" : "#00ff41", "clamp(2.2rem,4.5vw,5rem)")}
               {vitalCol("ABP", bpDisplay, `(${mapDisplay})`, "#ff4444", "clamp(4rem,8vw,9rem)")}
-              {vitalCol("CO",  coDisplay,  "L/min",  "#00e5ff", "clamp(2rem,4vw,4.5rem)")}
             </div>
           </div>
         </header>
@@ -501,13 +500,6 @@ export default function Monitor() {
                 {bpDisplay}
               </span>
               <span className="text-[7px] text-[#ff4444] opacity-60">({mapDisplay})</span>
-            </div>
-            <div className="flex flex-col items-end leading-none" style={{ minWidth: "1.875rem" }}>
-              <span className="text-[8px] text-gray-500 tracking-widest">CO</span>
-              <span className="text-base font-bold text-[#00e5ff]" data-testid="text-co-value">
-                {coDisplay}
-              </span>
-              <span className="text-[7px] text-[#00e5ff] opacity-60">L/min</span>
             </div>
           </div>
         </div>
