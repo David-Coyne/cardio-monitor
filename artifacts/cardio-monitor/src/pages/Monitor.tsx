@@ -25,10 +25,10 @@ function useMonitorLayout() {
     if (isLandscape) {
       const leftW = vw * 0.34;
       const bodyH = vh - 52 - 50; // header + rhythm row
-      const s = Math.min(leftW * 0.92 / 158, bodyH * 0.88 / 178);
+      const s = Math.min(leftW * 1.38 / 158, bodyH * 1.32 / 178);
       return { scale: 1, isLandscape: true, heartW: Math.round(158 * s), heartH: Math.round(178 * s) };
     }
-    return { scale: Math.min(vw / DESIGN_W, vh / DESIGN_H), isLandscape: false, heartW: 220, heartH: 248 };
+    return { scale: Math.min(vw / DESIGN_W, vh / DESIGN_H), isLandscape: false, heartW: 330, heartH: 372 };
   };
   const [layout, setLayout] = useState(calc);
   useEffect(() => {
