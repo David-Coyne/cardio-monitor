@@ -200,10 +200,10 @@ function draw2D(
 
   // Beat scale
   const bs = 1 + beat * 0.038;
-  // X-axis rotation → foreshorten vertically
-  const cosX = Math.max(0.15, Math.cos(xRot));
-  // Y-axis rotation → foreshorten horizontally
-  const cosY = Math.max(0.15, Math.cos(yRot));
+  // X-axis rotation → foreshorten / flip vertically
+  const cosX = Math.cos(xRot);
+  // Y-axis rotation → foreshorten / flip horizontally
+  const cosY = Math.cos(yRot);
 
   // Color theme
   const isVF = rhythmType === "VF";
@@ -216,7 +216,7 @@ function draw2D(
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.scale(bs * (0.68 + 0.32 * cosY), bs * (0.68 + 0.32 * cosX));
+  ctx.scale(bs * (Math.abs(cosY) < 0.001 ? 0.001 : cosY), bs * (Math.abs(cosX) < 0.001 ? 0.001 : cosX));
 
   // ── Layer 1: base fill (deep radial gradient) ─────────────────────────────
   const g1 = ctx.createRadialGradient(-rw*0.18, -rh*0.12, rh*0.08, -rw*0.18, -rh*0.12, rh*1.15);
@@ -455,7 +455,7 @@ export function Heart3D({
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!dragRef.current) return;
     const dy = e.clientY - dragRef.current.y;
-    xRotRef.current = Math.max(-Math.PI * 0.52, Math.min(Math.PI * 0.52, xRotRef.current + dy * 0.013));
+    xRotRef.current = Math.max(-Math.PI, Math.min(Math.PI, xRotRef.current + dy * 0.013));
     dragRef.current.y = e.clientY;
     setXRotDeg(Math.round(xRotRef.current * 180 / Math.PI));
   }, []);
@@ -501,8 +501,8 @@ export function Heart3D({
           <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap", minWidth: 8 }}>X</span>
           <input
             type="range"
-            min={-90}
-            max={90}
+            min={-180}
+            max={180}
             step={1}
             value={xRotDeg}
             onChange={e => {
@@ -516,12 +516,12 @@ export function Heart3D({
               WebkitAppearance: "none",
               height: 3,
               borderRadius: 2,
-              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((xRotDeg + 90) / 180) * 100}%, rgba(40,60,40,0.6) ${((xRotDeg + 90) / 180) * 100}%)`,
+              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((xRotDeg + 180) / 360) * 100}%, rgba(40,60,40,0.6) ${((xRotDeg + 180) / 360) * 100}%)`,
               outline: "none",
               cursor: "pointer",
             }}
           />
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 22, textAlign: "right" }}>
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 28, textAlign: "right" }}>
             {xRotDeg > 0 ? `+${xRotDeg}°` : `${xRotDeg}°`}
           </span>
         </div>
@@ -530,8 +530,8 @@ export function Heart3D({
           <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap", minWidth: 8 }}>Y</span>
           <input
             type="range"
-            min={-90}
-            max={90}
+            min={-180}
+            max={180}
             step={1}
             value={yRotDeg}
             onChange={e => {
@@ -545,12 +545,12 @@ export function Heart3D({
               WebkitAppearance: "none",
               height: 3,
               borderRadius: 2,
-              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((yRotDeg + 90) / 180) * 100}%, rgba(40,60,40,0.6) ${((yRotDeg + 90) / 180) * 100}%)`,
+              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((yRotDeg + 180) / 360) * 100}%, rgba(40,60,40,0.6) ${((yRotDeg + 180) / 360) * 100}%)`,
               outline: "none",
               cursor: "pointer",
             }}
           />
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 22, textAlign: "right" }}>
+          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 28, textAlign: "right" }}>
             {yRotDeg > 0 ? `+${yRotDeg}°` : `${yRotDeg}°`}
           </span>
         </div>
