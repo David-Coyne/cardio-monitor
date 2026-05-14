@@ -469,23 +469,14 @@ export function Heart3D({
           onPointerLeave={onPointerUp}
         />
 
-        {/* Anatomical labels */}
-        <div className="absolute inset-0 pointer-events-none" style={{ fontFamily: "monospace", fontWeight: "bold" }}>
-          <span style={{ position: "absolute", left: "3%",  top: "34%", fontSize: 7.5, color: lblColor }}>LA</span>
-          <span style={{ position: "absolute", right: "2%", top: "34%", fontSize: 7.5, color: lblColor }}>RA</span>
-          <span style={{ position: "absolute", left: "3%",  top: "61%", fontSize: 7.5, color: lblColor }}>LV</span>
-          <span style={{ position: "absolute", right: "2%", top: "61%", fontSize: 7.5, color: lblColor }}>RV</span>
-          <span style={{ position: "absolute", left: "46%", top: "2%",  fontSize: 7.5, color: lblColor }}>Ao</span>
-          <span style={{ position: "absolute", left: "17%", top: "13%", fontSize: 7.5, color: lblColor }}>PA</span>
-          <span style={{ position: "absolute", right: "2%", top: "52%", fontSize: 6.5, color: coro }}>RCA</span>
-          <span style={{ position: "absolute", left: "38%", top: "86%", fontSize: 6.5, color: coro }}>LAD</span>
-          <span style={{ position: "absolute", left: "2%",  top: "56%", fontSize: 6.5, color: coro }}>LCX</span>
-          {isVF && (
-            <span style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", fontSize: 9, letterSpacing: 2, color: "rgba(255,50,50,0.62)" }}>
+        {/* VF overlay only */}
+        {isVF && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <span style={{ fontSize: 9, letterSpacing: 2, fontFamily: "monospace", fontWeight: "bold", color: "rgba(255,50,50,0.62)" }}>
               FIBRILLATING
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Drag hint */}
         <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", fontSize: 6, fontFamily: "monospace", color: "rgba(90,155,90,0.45)", whiteSpace: "nowrap", pointerEvents: "none" }}>
@@ -493,13 +484,6 @@ export function Heart3D({
         </div>
       </div>
 
-      <div
-        className="text-[9px] font-mono mt-0.5 tracking-widest"
-        style={{ color: isLethal ? "#ff5555" : "rgba(156,163,175,1)" }}
-        data-testid="heart-rate-label"
-      >
-        {isVF ? "VF · NO PULSE" : `${heartRate} BPM · ${rhythmType}`}
-      </div>
     </div>
   );
 }
