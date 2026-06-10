@@ -2,10 +2,9 @@ import { useRef, useState, useCallback } from "react";
 
 // ── Audio synthesis ───────────────────────────────────────────────────────────
 
-function synthS1(ctx: AudioContext, vol = 0.9) {
-  const t = ctx.currentTime;
+function synthS1(ctx: AudioContext, at: number, vol = 0.9) {
+  const t = at;
 
-  // Two overlapping low-frequency oscillators shaped like a mitral valve thump
   const osc1 = ctx.createOscillator();
   const osc2 = ctx.createOscillator();
   const g2   = ctx.createGain();
@@ -27,7 +26,7 @@ function synthS1(ctx: AudioContext, vol = 0.9) {
   lpf.frequency.value = 160;
   lpf.Q.value = 0.9;
 
-  env.gain.setValueAtTime(0,       t);
+  env.gain.setValueAtTime(0,         t);
   env.gain.linearRampToValueAtTime(vol * 0.7, t + 0.011);
   env.gain.setValueAtTime(vol * 0.7, t + 0.022);
   env.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
@@ -39,12 +38,12 @@ function synthS1(ctx: AudioContext, vol = 0.9) {
   lpf.connect(env);
   env.connect(ctx.destination);
 
-  osc1.start(t); osc1.stop(t + 0.20);
-  osc2.start(t); osc2.stop(t + 0.20);
+  osc1.start(t); osc1.stop(t + 0.22);
+  osc2.start(t); osc2.stop(t + 0.22);
 }
 
-function synthS2(ctx: AudioContext, vol = 0.55) {
-  const t = ctx.currentTime;
+function synthS2(ctx: AudioContext, at: number, vol = 0.55) {
+  const t = at;
 
   const osc = ctx.createOscillator();
   const lpf = ctx.createBiquadFilter();
@@ -58,7 +57,7 @@ function synthS2(ctx: AudioContext, vol = 0.55) {
   lpf.frequency.value = 200;
   lpf.Q.value = 1.0;
 
-  env.gain.setValueAtTime(0,       t);
+  env.gain.setValueAtTime(0,     t);
   env.gain.linearRampToValueAtTime(vol,    t + 0.008);
   env.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
 
@@ -69,9 +68,8 @@ function synthS2(ctx: AudioContext, vol = 0.55) {
   osc.start(t); osc.stop(t + 0.15);
 }
 
-// Two-tone medical alarm beep (for VF / VT)
-function synthAlarm(ctx: AudioContext, vol = 0.12, isVF = true) {
-  const t = ctx.currentTime;
+function synthAlarm(ctx: AudioContext, at: number, vol = 0.12, isVF = true) {
+  const t = at;
   const tones = isVF ? [880, 1100] : [660];
 
   tones.forEach((freq, i) => {
@@ -90,7 +88,7 @@ function synthAlarm(ctx: AudioContext, vol = 0.12, isVF = true) {
     osc.connect(env);
     env.connect(ctx.destination);
     osc.start(t + delay);
-    osc.stop(t + delay + 0.1);
+    osc.stop(t + delay + 0.12);
   });
 }
 
@@ -102,31 +100,40 @@ export function useHeartSound() {
   const mutedRef    = useRef(true);
   const [muted, setMuted] = useState(true);
 
-  // Must be called inside a user-gesture handler (click, pointerdown, etc.)
-  // so the browser permits AudioContext creation / resumption.
   const unlockAudio = useCallback(() => {
     if (!ctxRef.current) {
       ctxRef.current = new (window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     }
     if (ctxRef.current.state === "suspended") {
-      ctxRef.current.resume();
+      ctxRef.current.resume().catch(() => {});
     }
     unlockedRef.current = true;
   }, []);
 
-  const safe = (fn: (ctx: AudioContext) => void) => {
+  // Async-safe player: resumes the context if needed, then schedules the note
+  // slightly in the future so the scheduler has a buffer even on slow resume.
+  const safe = useCallback((fn: (ctx: AudioContext, at: number) => void) => {
     if (mutedRef.current || !unlockedRef.current || !ctxRef.current) return;
     const ctx = ctxRef.current;
     if (ctx.state === "closed") return;
-    if (ctx.state === "suspended") ctx.resume();
-    try { fn(ctx); } catch { /* ignore */ }
-  };
 
-  const playS1    = useCallback(() => safe(ctx => synthS1(ctx)),           []);
-  const playS2    = useCallback(() => safe(ctx => synthS2(ctx)),           []);
+    const play = () => {
+      const at = ctx.currentTime + 0.015; // small look-ahead
+      try { fn(ctx, at); } catch { /* ignore */ }
+    };
+
+    if (ctx.state === "suspended") {
+      ctx.resume().then(play).catch(() => {});
+    } else {
+      play();
+    }
+  }, []);
+
+  const playS1    = useCallback(() => safe((ctx, at) => synthS1(ctx, at)),           [safe]);
+  const playS2    = useCallback(() => safe((ctx, at) => synthS2(ctx, at)),           [safe]);
   const playAlarm = useCallback((isVF: boolean) =>
-    safe(ctx => synthAlarm(ctx, 0.12, isVF)),                              []);
+    safe((ctx, at) => synthAlarm(ctx, at, 0.12, isVF)),                              [safe]);
 
   const toggleMute = useCallback(() => {
     mutedRef.current = !mutedRef.current;
