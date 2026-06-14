@@ -80,10 +80,15 @@ float smin(float a, float b, float k) {
 }
 float cap(vec3 p,vec3 a,vec3 b,float r){vec3 pa=p-a,ba=b-a;return length(pa-ba*clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0))-r;}
 float artD(vec3 p){
-  float lm =cap(p,vec3(-0.05, 0.26, 0.29),vec3(-0.10, 0.18, 0.33),0.016);
-  float lad=cap(p,vec3(-0.10, 0.18, 0.33),vec3(-0.04,-0.60, 0.22),0.024);
-  float lcx=cap(p,vec3(-0.10, 0.18, 0.33),vec3(-0.46, 0.10,-0.04),0.020);
-  float rca=cap(p,vec3( 0.24, 0.22, 0.22),vec3( 0.44,-0.04,-0.12),0.022);
+  // LV surface z at (x,y): solve k0=1 for sdEll. Values verified numerically.
+  // LM  : aortic ostium → LAD/LCX bifurcation (front-top left)
+  float lm =cap(p,vec3(-0.04, 0.22, 0.34),vec3( 0.05, 0.13, 0.37),0.034);
+  // LAD : down anterior interventricular groove to apex
+  float lad=cap(p,vec3( 0.05, 0.13, 0.37),vec3(-0.01,-0.52, 0.30),0.042);
+  // LCX : left circumflex, runs in left AV groove
+  float lcx=cap(p,vec3( 0.05, 0.13, 0.37),vec3(-0.46, 0.10, 0.18),0.036);
+  // RCA : right coronary along right AV groove
+  float rca=cap(p,vec3( 0.29, 0.20, 0.27),vec3( 0.46, 0.03, 0.20),0.036);
   return min(lm,min(lad,min(lcx,rca)));
 }
 float sdEll(vec3 p, vec3 r) {
@@ -106,6 +111,7 @@ float hSDF(vec3 p, float b) {
   float la = sdEll(p-vec3(-0.22, 0.45,-0.12),vec3(0.232+ex*0.4,0.202+ex*0.4,0.252+ex*0.4));
   float ra = sdEll(p-vec3( 0.26, 0.43,-0.07),vec3(0.212+ex*0.3,0.198+ex*0.3,0.218+ex*0.3));
   float d  = smin(lv,rv,0.22); d=smin(d,la,0.16); d=smin(d,ra,0.14);
+  d = smin(d, artD(p), 0.008);
   return d + n3(p*5.5)*0.008 + n3(p*13.0)*0.004;
 }
 vec3 nrm(vec3 p, float b) {
@@ -150,9 +156,11 @@ void main() {
   col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
   col+=fr*vec3(0.72,0.12,0.08)*0.28; col*=0.54+0.46*occ;
   col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
-  float am=smoothstep(0.028,-0.003,artD(pos));
-  vec3 ac=skin*1.22*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+vec3(0.10,0.018,0.016)*occ)+sp1*sh*vec3(1.0,0.93,0.90)*0.68;
-  col=mix(col,ac,am*0.70);
+  float am=1.0-smoothstep(-0.008,0.068,artD(pos));
+  // Coronary arteries: epicardial fat sheath → lighter, warmer orange-red
+  vec3 artSkin=skin*0.38+vec3(0.42,0.20,0.10);
+  vec3 ac=artSkin*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+vec3(0.10,0.018,0.016)*occ)+sp1*sh*vec3(1.0,0.93,0.90)*0.55;
+  col=mix(col,ac,am*0.82);
   col=col/(col+1.0); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
   gl_FragColor=vec4(col,1.0);
 }`;
