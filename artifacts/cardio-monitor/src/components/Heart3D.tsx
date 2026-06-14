@@ -78,6 +78,14 @@ float smin(float a, float b, float k) {
   float h = max(k - abs(a-b), 0.0) / k;
   return min(a,b) - h*h*k*0.25;
 }
+float cap(vec3 p,vec3 a,vec3 b,float r){vec3 pa=p-a,ba=b-a;return length(pa-ba*clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0))-r;}
+float artD(vec3 p){
+  float lm =cap(p,vec3(-0.05, 0.26, 0.29),vec3(-0.10, 0.18, 0.33),0.016);
+  float lad=cap(p,vec3(-0.10, 0.18, 0.33),vec3(-0.04,-0.60, 0.22),0.024);
+  float lcx=cap(p,vec3(-0.10, 0.18, 0.33),vec3(-0.46, 0.10,-0.04),0.020);
+  float rca=cap(p,vec3( 0.24, 0.22, 0.22),vec3( 0.44,-0.04,-0.12),0.022);
+  return min(lm,min(lad,min(lcx,rca)));
+}
 float sdEll(vec3 p, vec3 r) {
   float k0 = length(p/r), k1 = length(p/(r*r));
   return k0*(k0-1.0)/k1;
@@ -142,6 +150,9 @@ void main() {
   col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
   col+=fr*vec3(0.72,0.12,0.08)*0.28; col*=0.54+0.46*occ;
   col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
+  float am=smoothstep(0.028,-0.003,artD(pos));
+  vec3 ac=skin*1.22*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+vec3(0.10,0.018,0.016)*occ)+sp1*sh*vec3(1.0,0.93,0.90)*0.68;
+  col=mix(col,ac,am*0.70);
   col=col/(col+1.0); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
   gl_FragColor=vec4(col,1.0);
 }`;
@@ -294,6 +305,37 @@ function draw2D(
   ctx.lineWidth = rw * 0.045;
   ctx.strokeStyle = "rgba(30,0,0,0.50)";
   ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
+
+  // ── Layer 9b: coronary arteries ───────────────────────────────────────────
+  ctx.save();
+  // Clip strokes to heart silhouette so they don't bleed outside
+  heartPath(ctx, rw, rh);
+  ctx.clip();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const artAlpha = (0.62 - beat * 0.08).toFixed(3);
+  // LAD — left anterior descending, runs down anterior interventricular groove
+  ctx.beginPath();
+  ctx.moveTo( rw * 0.06, -rh * 0.28);
+  ctx.bezierCurveTo( rw * 0.08,  rh * 0.10,  rw * 0.06,  rh * 0.42,  rw * 0.02,  rh * 0.70);
+  ctx.lineWidth   = rw * 0.028;
+  ctx.strokeStyle = `rgba(190,58,22,${artAlpha})`;
+  ctx.stroke();
+  // LM + LCX branch — left main → left circumflex, curves around left AV groove
+  ctx.beginPath();
+  ctx.moveTo( rw * 0.06, -rh * 0.28);
+  ctx.bezierCurveTo(-rw * 0.10, -rh * 0.22, -rw * 0.50, -rh * 0.10, -rw * 0.55,  rh * 0.18);
+  ctx.lineWidth   = rw * 0.024;
+  ctx.strokeStyle = `rgba(182,52,20,${artAlpha})`;
+  ctx.stroke();
+  // RCA — right coronary artery, runs along right AV groove
+  ctx.beginPath();
+  ctx.moveTo( rw * 0.52, -rh * 0.10);
+  ctx.bezierCurveTo( rw * 0.62,  rh * 0.08,  rw * 0.58,  rh * 0.34,  rw * 0.42,  rh * 0.50);
+  ctx.lineWidth   = rw * 0.022;
+  ctx.strokeStyle = `rgba(178,50,18,${artAlpha})`;
   ctx.stroke();
   ctx.restore();
 
