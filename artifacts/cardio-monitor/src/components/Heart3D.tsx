@@ -78,18 +78,33 @@ float smin(float a, float b, float k) {
   float h = max(k - abs(a-b), 0.0) / k;
   return min(a,b) - h*h*k*0.25;
 }
-float cap(vec3 p,vec3 a,vec3 b,float r){vec3 pa=p-a,ba=b-a;return length(pa-ba*clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0))-r;}
+// Tapered capsule: r1 at endpoint a, r2 at endpoint b (r1 >= r2)
+float tapCap(vec3 p,vec3 a,vec3 b,float r1,float r2){
+  vec3 pa=p-a,ba=b-a;
+  float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);
+  return length(pa-ba*h)-mix(r1,r2,h);
+}
 float artD(vec3 p){
-  // LV surface z at (x,y): solve k0=1 for sdEll. Values verified numerically.
-  // LM  : aortic ostium → LAD/LCX bifurcation (front-top left)
-  float lm =cap(p,vec3(-0.04, 0.22, 0.34),vec3( 0.05, 0.13, 0.37),0.034);
-  // LAD : down anterior interventricular groove to apex
-  float lad=cap(p,vec3( 0.05, 0.13, 0.37),vec3(-0.01,-0.52, 0.30),0.042);
-  // LCX : left circumflex, runs in left AV groove
-  float lcx=cap(p,vec3( 0.05, 0.13, 0.37),vec3(-0.46, 0.10, 0.18),0.036);
-  // RCA : right coronary along right AV groove
-  float rca=cap(p,vec3( 0.29, 0.20, 0.27),vec3( 0.46, 0.03, 0.20),0.036);
-  return min(lm,min(lad,min(lcx,rca)));
+  // ── Left coronary system ─────────────────────────────────────────────────
+  // LM  : left main, aortic root → LAD/LCX bifurcation
+  float lm  = tapCap(p,vec3(-0.04, 0.28, 0.28),vec3( 0.06, 0.15, 0.37),0.030,0.028);
+  // LAD : left anterior descending, down anterior interventricular groove
+  float lad = tapCap(p,vec3( 0.06, 0.15, 0.37),vec3(-0.02,-0.52, 0.30),0.035,0.013);
+  // D1  : first diagonal branch of LAD (upper-mid LAD → lower-left)
+  float d1  = tapCap(p,vec3( 0.07, 0.04, 0.38),vec3(-0.22,-0.20, 0.29),0.019,0.009);
+  // D2  : second diagonal branch of LAD
+  float d2  = tapCap(p,vec3( 0.05,-0.12, 0.36),vec3(-0.30,-0.34, 0.22),0.013,0.006);
+  // LCX : left circumflex, left AV groove
+  float lcx = tapCap(p,vec3( 0.06, 0.15, 0.37),vec3(-0.46, 0.12, 0.17),0.029,0.015);
+  // OM1 : obtuse marginal branch of LCX
+  float om1 = tapCap(p,vec3(-0.26, 0.14, 0.28),vec3(-0.44,-0.10, 0.17),0.018,0.009);
+  // ── Right coronary system ────────────────────────────────────────────────
+  // RCA : right coronary, right AV groove
+  float rca = tapCap(p,vec3( 0.30, 0.22, 0.26),vec3( 0.46, 0.04, 0.19),0.027,0.017);
+  // AM  : acute marginal branch of RCA
+  float am  = tapCap(p,vec3( 0.40, 0.12, 0.22),vec3( 0.42,-0.18, 0.12),0.016,0.007);
+  float left = min(min(lm,lad),min(min(d1,d2),min(lcx,om1)));
+  return min(left,min(rca,am));
 }
 float sdEll(vec3 p, vec3 r) {
   float k0 = length(p/r), k1 = length(p/(r*r));
@@ -156,11 +171,11 @@ void main() {
   col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
   col+=fr*vec3(0.72,0.12,0.08)*0.28; col*=0.54+0.46*occ;
   col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
-  float am=1.0-smoothstep(-0.008,0.068,artD(pos));
-  // Coronary arteries: epicardial fat sheath → lighter, warmer orange-red
-  vec3 artSkin=skin*0.38+vec3(0.42,0.20,0.10);
-  vec3 ac=artSkin*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+vec3(0.10,0.018,0.016)*occ)+sp1*sh*vec3(1.0,0.93,0.90)*0.55;
-  col=mix(col,ac,am*0.82);
+  float am=1.0-smoothstep(-0.006,0.060,artD(pos));
+  // Epicardial fat sheath: warm cream-buff, distinctly lighter than myocardium
+  vec3 artSkin=skin*0.22+vec3(0.52,0.26,0.13);
+  vec3 ac=artSkin*(d1*sh*1.6*vec3(1.0,0.94,0.90)+d2*0.28*vec3(0.5,0.58,0.72)+vec3(0.12,0.024,0.018)*occ)+sp1*sh*vec3(1.0,0.96,0.92)*0.80;
+  col=mix(col,ac,am*0.86);
   col=col/(col+1.0); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
   gl_FragColor=vec4(col,1.0);
 }`;
@@ -318,33 +333,71 @@ function draw2D(
 
   // ── Layer 9b: coronary arteries ───────────────────────────────────────────
   ctx.save();
-  // Clip strokes to heart silhouette so they don't bleed outside
   heartPath(ctx, rw, rh);
   ctx.clip();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  const artAlpha = (0.62 - beat * 0.08).toFixed(3);
-  // LAD — left anterior descending, runs down anterior interventricular groove
-  ctx.beginPath();
-  ctx.moveTo( rw * 0.06, -rh * 0.28);
-  ctx.bezierCurveTo( rw * 0.08,  rh * 0.10,  rw * 0.06,  rh * 0.42,  rw * 0.02,  rh * 0.70);
-  ctx.lineWidth   = rw * 0.028;
-  ctx.strokeStyle = `rgba(190,58,22,${artAlpha})`;
-  ctx.stroke();
-  // LM + LCX branch — left main → left circumflex, curves around left AV groove
-  ctx.beginPath();
-  ctx.moveTo( rw * 0.06, -rh * 0.28);
-  ctx.bezierCurveTo(-rw * 0.10, -rh * 0.22, -rw * 0.50, -rh * 0.10, -rw * 0.55,  rh * 0.18);
-  ctx.lineWidth   = rw * 0.024;
-  ctx.strokeStyle = `rgba(182,52,20,${artAlpha})`;
-  ctx.stroke();
-  // RCA — right coronary artery, runs along right AV groove
-  ctx.beginPath();
-  ctx.moveTo( rw * 0.52, -rh * 0.10);
-  ctx.bezierCurveTo( rw * 0.62,  rh * 0.08,  rw * 0.58,  rh * 0.34,  rw * 0.42,  rh * 0.50);
-  ctx.lineWidth   = rw * 0.022;
-  ctx.strokeStyle = `rgba(178,50,18,${artAlpha})`;
-  ctx.stroke();
+  // Epicardial cream-buff colour, slightly pulsing opacity
+  const aA = (0.72 - beat * 0.10).toFixed(3);
+  const aB = (0.62 - beat * 0.08).toFixed(3);
+  const aC = (0.50 - beat * 0.07).toFixed(3);
+  // Helper for tapered strokes: draw twice, wide then narrower, to simulate taper
+  const drawArt = (
+    draw: () => void,
+    w1: number, w2: number,
+    col: string,
+  ) => {
+    draw(); ctx.lineWidth = rw * w1; ctx.strokeStyle = col; ctx.stroke();
+    draw(); ctx.lineWidth = rw * w2; ctx.strokeStyle = "rgba(215,170,130,0.18)"; ctx.stroke();
+  };
+  // LM (left main) — short stub at top-centre
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo(-rw * 0.04, -rh * 0.38);
+    ctx.lineTo( rw * 0.06, -rh * 0.30);
+  }, 0.028, 0.010, `rgba(192,148,108,${aA})`);
+  // LAD — tapers from wide at top to narrow at apex
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo( rw * 0.06, -rh * 0.30);
+    ctx.bezierCurveTo( rw * 0.09,  rh * 0.08,  rw * 0.06,  rh * 0.40,  rw * 0.02,  rh * 0.72);
+  }, 0.030, 0.012, `rgba(188,144,104,${aA})`);
+  // D1 — first diagonal
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo( rw * 0.09,  rh * 0.05);
+    ctx.bezierCurveTo( rw * 0.04,  rh * 0.14, -rw * 0.12,  rh * 0.22, -rw * 0.22,  rh * 0.28);
+  }, 0.018, 0.008, `rgba(184,140,100,${aB})`);
+  // D2 — second diagonal
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo( rw * 0.06,  rh * 0.22);
+    ctx.bezierCurveTo( rw * 0.01,  rh * 0.32, -rw * 0.18,  rh * 0.40, -rw * 0.30,  rh * 0.46);
+  }, 0.013, 0.006, `rgba(180,136,98,${aC})`);
+  // LCX — left circumflex, curves around left AV groove
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo( rw * 0.06, -rh * 0.30);
+    ctx.bezierCurveTo(-rw * 0.08, -rh * 0.24, -rw * 0.50, -rh * 0.10, -rw * 0.56,  rh * 0.16);
+  }, 0.026, 0.010, `rgba(188,144,104,${aA})`);
+  // OM1 — obtuse marginal
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo(-rw * 0.46, -rh * 0.04);
+    ctx.bezierCurveTo(-rw * 0.56,  rh * 0.06, -rw * 0.58,  rh * 0.20, -rw * 0.50,  rh * 0.36);
+  }, 0.016, 0.007, `rgba(180,136,98,${aB})`);
+  // RCA — right coronary
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo( rw * 0.50, -rh * 0.12);
+    ctx.bezierCurveTo( rw * 0.62,  rh * 0.06,  rw * 0.58,  rh * 0.30,  rw * 0.44,  rh * 0.46);
+  }, 0.024, 0.010, `rgba(188,144,104,${aA})`);
+  // AM — acute marginal
+  drawArt(() => {
+    ctx.beginPath();
+    ctx.moveTo( rw * 0.56,  rh * 0.12);
+    ctx.bezierCurveTo( rw * 0.58,  rh * 0.24,  rw * 0.54,  rh * 0.38,  rw * 0.46,  rh * 0.50);
+  }, 0.014, 0.006, `rgba(180,136,98,${aC})`);
   ctx.restore();
 
   // ── Layer 10: beat pulse glow ─────────────────────────────────────────────
