@@ -524,7 +524,7 @@ export function Heart3D({
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const xRotRef     = useRef(0.0);
   const yRotRef     = useRef(0.0);
-  const dragRef     = useRef<{ y: number } | null>(null);
+  const dragRef     = useRef<{ x: number; y: number } | null>(null);
   const [xRotDeg, setXRotDeg] = useState(0);
   const [yRotDeg, setYRotDeg] = useState(0);
   const [hoverArt, setHoverArt] = useState<{ art: ArteryDef; cx: number; cy: number } | null>(null);
@@ -646,16 +646,20 @@ export function Heart3D({
 
   // ── Pointer drag (x-axis rotation) ───────────────────────────────────────
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    dragRef.current = { y: e.clientY };
+    dragRef.current = { x: e.clientX, y: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (dragRef.current) {
+      const dx = e.clientX - dragRef.current.x;
       const dy = e.clientY - dragRef.current.y;
       xRotRef.current = Math.max(-Math.PI, Math.min(Math.PI, xRotRef.current + dy * 0.013));
+      yRotRef.current = yRotRef.current + dx * 0.013;
+      dragRef.current.x = e.clientX;
       dragRef.current.y = e.clientY;
       setXRotDeg(Math.round(xRotRef.current * 180 / Math.PI));
+      setYRotDeg(Math.round(yRotRef.current * 180 / Math.PI));
       setHoverArt(null);
       return;
     }
