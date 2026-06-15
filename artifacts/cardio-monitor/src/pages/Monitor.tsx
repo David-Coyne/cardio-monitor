@@ -509,51 +509,48 @@ export default function Monitor() {
 
       {/* ── Rhythm selector + sound toggle ──────────────────────────────────── */}
       <div
-        className="flex gap-1 px-2 py-1 items-center"
+        className="px-2 py-1"
         style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
       >
-        {RHYTHM_CONFIGS.map(cfg => {
-          const active  = rhythmType === cfg.type;
-          const danger  = cfg.isLethal;
-          const col     = danger ? "#ff5555" : "#00ff41";
-          return (
-            <button
-              key={cfg.type}
-              data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
-              onClick={() => handleRhythmChange(cfg.type)}
-              className="flex-1 text-[9px] font-bold py-0.5 rounded tracking-wider transition-all"
-              style={{
-                color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
-                background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
-                border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
-                boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
-              }}
-            >
-              {cfg.label}
-            </button>
-          );
-        })}
+        {/* 2×4 grid so all 8 rhythms fit at 390 px */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 3, marginBottom: 3 }}>
+          {RHYTHM_CONFIGS.map(cfg => {
+            const active  = rhythmType === cfg.type;
+            const danger  = cfg.isLethal;
+            const col     = danger ? "#ff5555" : "#00ff41";
+            return (
+              <button
+                key={cfg.type}
+                data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
+                onClick={() => handleRhythmChange(cfg.type)}
+                className="text-[9px] font-bold py-0.5 rounded tracking-wider transition-all"
+                style={{
+                  color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
+                  background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
+                  border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
+                  boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
+                }}
+              >
+                {cfg.label}
+              </button>
+            );
+          })}
+        </div>
 
-        {/* Thin divider */}
-        <div style={{ width: 1, alignSelf: "stretch", background: "#1a3a1a", margin: "2px 1px" }} />
-
-        {/* Sound on/off toggle */}
+        {/* Sound toggle — full width below the grid */}
         <button
           data-testid="button-sound-toggle"
           onClick={() => { unlockAudio(); toggleMute(); }}
           title={muted ? "Sound off — click to enable" : "Sound on — click to mute"}
-          className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
+          className="w-full text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
           style={{
-            width: 44,
-            flexShrink: 0,
             lineHeight: 1.2,
             color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
             background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
             border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
           }}
         >
-          <div>SOUND</div>
-          <div>{muted ? "OFF" : "ON"}</div>
+          SOUND {muted ? "OFF" : "ON"}
         </button>
       </div>
 
