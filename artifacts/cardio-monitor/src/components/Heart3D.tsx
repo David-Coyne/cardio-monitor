@@ -414,6 +414,100 @@ function draw2D(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Coronary artery hover-pick — CPU ray-capsule test matching the GLSL camera
+// ─────────────────────────────────────────────────────────────────────────────
+
+type V3 = [number, number, number];
+const vdot = (a: V3, b: V3) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const vsub = (a: V3, b: V3): V3 => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+
+// Match GLSL rotX / rotY (column-major, so v' = M*v as: x,c*y-s*z,s*y+c*z for rotX)
+function applyRotX(a: number, v: V3): V3 {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [v[0], c*v[1]-s*v[2], s*v[1]+c*v[2]];
+}
+function applyRotY(a: number, v: V3): V3 {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [c*v[0]+s*v[2], v[1], -s*v[0]+c*v[2]];
+}
+// iR = rotX(-xRot)*rotY(-yRot) — applied right-to-left
+function applyIR(v: V3, xRot: number, yRot: number): V3 {
+  return applyRotX(-xRot, applyRotY(-yRot, v));
+}
+
+// Minimum distance from ray (ro+t*rd, t≥0) to segment A→B
+function raySegDist(ro: V3, rd: V3, A: V3, B: V3): number {
+  const d = vsub(B, A), m = vsub(ro, A);
+  const nd = vdot(rd, d), dd = vdot(d, d);
+  const mn = vdot(m, rd), md = vdot(m, d);
+  const denom = dd - nd*nd;
+  let s = Math.abs(denom) < 1e-8 ? 0 : Math.max(0, Math.min(1, (md - mn*nd) / denom));
+  let t = s*nd - mn;
+  if (t < 0) { t = 0; s = Math.max(0, Math.min(1, md / dd)); }
+  const dx = m[0]+rd[0]*t-d[0]*s;
+  const dy = m[1]+rd[1]*t-d[1]*s;
+  const dz = m[2]+rd[2]*t-d[2]*s;
+  return Math.sqrt(dx*dx+dy*dy+dz*dz);
+}
+
+interface ArteryDef {
+  label: string;
+  desc:  string;
+  a: V3; b: V3;
+  r1: number;
+}
+
+const ARTERIES: ArteryDef[] = [
+  { label: "Left Main (LM)",
+    desc:  "Short trunk supplying the entire left coronary system",
+    a: [-0.04, 0.28, 0.28], b: [ 0.06, 0.15, 0.37], r1: 0.030 },
+  { label: "LAD  ·  Left Anterior Descending",
+    desc:  "Supplies anterior LV wall, interventricular septum & apex",
+    a: [ 0.06, 0.15, 0.37], b: [-0.02,-0.52, 0.30], r1: 0.035 },
+  { label: "D1  ·  First Diagonal",
+    desc:  "First diagonal branch of LAD; supplies anterolateral LV",
+    a: [ 0.07, 0.04, 0.38], b: [-0.22,-0.20, 0.29], r1: 0.019 },
+  { label: "D2  ·  Second Diagonal",
+    desc:  "Second diagonal branch; supplies mid-lateral wall",
+    a: [ 0.05,-0.12, 0.36], b: [-0.30,-0.34, 0.22], r1: 0.013 },
+  { label: "LCX  ·  Left Circumflex",
+    desc:  "Runs in left AV groove; supplies lateral & posterior LV",
+    a: [ 0.06, 0.15, 0.37], b: [-0.46, 0.12, 0.17], r1: 0.029 },
+  { label: "OM1  ·  Obtuse Marginal",
+    desc:  "Largest LCX branch; supplies posterolateral LV",
+    a: [-0.26, 0.14, 0.28], b: [-0.44,-0.10, 0.17], r1: 0.018 },
+  { label: "RCA  ·  Right Coronary Artery",
+    desc:  "Supplies RV free wall, SA node & posterior LV (RD)",
+    a: [ 0.30, 0.22, 0.26], b: [ 0.46, 0.04, 0.19], r1: 0.027 },
+  { label: "AM  ·  Acute Marginal",
+    desc:  "RCA branch supplying the right ventricular free wall",
+    a: [ 0.40, 0.12, 0.22], b: [ 0.42,-0.18, 0.12], r1: 0.016 },
+];
+
+function pickArtery(
+  px: number, py: number,
+  cw: number, ch: number,
+  xRot: number, yRot: number,
+): ArteryDef | null {
+  // Reproduce GLSL UV→ray (gl_FragCoord Y from bottom, DOM Y from top)
+  const uvX = ((px / cw) * 2 - 1) * (cw / ch);
+  const uvY = -((py / ch) * 2 - 1);
+  const mag = Math.sqrt(uvX*uvX + uvY*uvY + 1.76*1.76);
+  const rdW: V3 = [uvX/mag, uvY/mag, -1.76/mag];
+  const ro = applyIR([0, 0.04, 2.85], xRot, yRot);
+  const rd = applyIR(rdW, xRot, yRot);
+
+  let best: ArteryDef | null = null;
+  let bestDist = Infinity;
+  for (const art of ARTERIES) {
+    const dist = raySegDist(ro, rd, art.a, art.b);
+    const thresh = art.r1 * 3.0 + 0.02;   // generous pick radius
+    if (dist < thresh && dist < bestDist) { bestDist = dist; best = art; }
+  }
+  return best;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -431,8 +525,9 @@ export function Heart3D({
   const xRotRef     = useRef(0.0);
   const yRotRef     = useRef(0.0);
   const dragRef     = useRef<{ y: number } | null>(null);
-  const [xRotDeg, setXRotDeg] = useState(0); // slider state in degrees
-  const [yRotDeg, setYRotDeg] = useState(0); // slider state in degrees
+  const [xRotDeg, setXRotDeg] = useState(0);
+  const [yRotDeg, setYRotDeg] = useState(0);
+  const [hoverArt, setHoverArt] = useState<{ art: ArteryDef; cx: number; cy: number } | null>(null);
   const pausedRef   = useRef(paused);
   const hrRef       = useRef(heartRate);
   const rhythmRef   = useRef(rhythmType);
@@ -556,11 +651,22 @@ export function Heart3D({
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!dragRef.current) return;
-    const dy = e.clientY - dragRef.current.y;
-    xRotRef.current = Math.max(-Math.PI, Math.min(Math.PI, xRotRef.current + dy * 0.013));
-    dragRef.current.y = e.clientY;
-    setXRotDeg(Math.round(xRotRef.current * 180 / Math.PI));
+    if (dragRef.current) {
+      const dy = e.clientY - dragRef.current.y;
+      xRotRef.current = Math.max(-Math.PI, Math.min(Math.PI, xRotRef.current + dy * 0.013));
+      dragRef.current.y = e.clientY;
+      setXRotDeg(Math.round(xRotRef.current * 180 / Math.PI));
+      setHoverArt(null);
+      return;
+    }
+    // Artery hover-pick
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const art = pickArtery(px, py, rect.width, rect.height, xRotRef.current, yRotRef.current);
+    setHoverArt(art ? { art, cx: e.clientX, cy: e.clientY } : null);
   }, []);
 
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
@@ -579,11 +685,11 @@ export function Heart3D({
       >
         <canvas
           ref={canvasRef}
-          style={{ width: w, height: h, display: "block", cursor: "grab", touchAction: "none" }}
+          style={{ width: w, height: h, display: "block", cursor: hoverArt ? "crosshair" : "grab", touchAction: "none" }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
+          onPointerLeave={() => { dragRef.current = null; setHoverArt(null); }}
         />
 
         {/* VF overlay only */}
@@ -596,6 +702,44 @@ export function Heart3D({
         )}
 
       </div>
+
+      {/* Artery hover tooltip — fixed so it escapes overflow:hidden */}
+      {hoverArt && (
+        <div
+          style={{
+            position:      "fixed",
+            left:          hoverArt.cx + 16,
+            top:           hoverArt.cy - 8,
+            pointerEvents: "none",
+            zIndex:        9999,
+            background:    "rgba(6,14,8,0.94)",
+            border:        "1px solid rgba(185,148,82,0.55)",
+            borderRadius:  5,
+            padding:       "6px 10px",
+            maxWidth:      220,
+            boxShadow:     "0 2px 12px rgba(0,0,0,0.7)",
+          }}
+        >
+          <div style={{
+            fontSize:     9,
+            fontFamily:   "monospace",
+            fontWeight:   "bold",
+            color:        "rgba(210,178,110,0.97)",
+            letterSpacing: 0.6,
+            marginBottom: 3,
+          }}>
+            {hoverArt.art.label}
+          </div>
+          <div style={{
+            fontSize:   8,
+            fontFamily: "monospace",
+            color:      "rgba(168,196,168,0.82)",
+            lineHeight: 1.5,
+          }}>
+            {hoverArt.art.desc}
+          </div>
+        </div>
+      )}
 
       {/* Rotation sliders */}
       <div style={{ width: w, marginTop: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
