@@ -116,7 +116,7 @@ export default function Monitor() {
       let b: number;
       let phase: number;
 
-      if (rhythm === 'PVC' && beatStartsRef.current?.length) {
+      if ((rhythm === 'PVC' || rhythm === 'TRI') && beatStartsRef.current?.length) {
         // Binary search for the beat containing `sample`
         const starts = beatStartsRef.current;
         let lo = 0, hi = starts.length - 1;
@@ -155,7 +155,7 @@ export default function Monitor() {
 
       // ── Mid-beat: S2 at end of systole (~phase 0.38) ────────────────────
       // Suppress S2 on PVC beats (aortic valve barely opens in ineffective contraction)
-      const isPVCBeat = rhythm === 'PVC' && (beatTypeRef.current?.[b] ?? false);
+      const isPVCBeat = (rhythm === 'PVC' || rhythm === 'TRI') && (beatTypeRef.current?.[b] ?? false);
       if (rhythm !== "VF" && !isPVCBeat && phase >= 0.38 && !s2Played) {
         s2Played = true;
         playS2Ref.current();

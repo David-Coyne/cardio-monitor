@@ -1,6 +1,6 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type RhythmType = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF' | 'PVC';
+export type RhythmType = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF' | 'PVC' | 'TRI';
 
 export interface WaveformData {
   ecgData:    number[];
@@ -44,7 +44,8 @@ export const RHYTHM_CONFIGS: RhythmConfig[] = [
   { type: 'SVT', label: 'SVT', fullName: 'Supraventricular Tachycardia',                        defaultHR: 180, hrMin: 150, hrMax: 240, isLethal: false, defaultSys: 100, defaultDia: 70, defaultCO: 4.0, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 40,  abpMaxY: 130, coMinY: -0.4, coMaxY: 6   },
   { type: 'VT',  label: 'VT',  fullName: 'Ventricular Tachycardia',    defaultHR: 150, hrMin: 120, hrMax: 200, isLethal: true,  defaultSys: 90,  defaultDia: 60, defaultCO: 3.0, ecgMinY: -0.6,  ecgMaxY: 1.6,  abpMinY: 30,  abpMaxY: 120, coMinY: -0.4, coMaxY: 5   },
   { type: 'VF',  label: 'VF',  fullName: 'Ventricular Fibrillation',   defaultHR: 300, hrMin: 300, hrMax: 300, isLethal: true,  defaultSys: 40,  defaultDia: 25, defaultCO: 0.1, ecgMinY: -2.0,  ecgMaxY: 2.0,  abpMinY: 0,   abpMaxY: 80,  coMinY: -0.1, coMaxY: 0.5 },
-  { type: 'PVC', label: 'Bigemini', fullName: 'Ventricular Bigeminy', defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.5, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
+  { type: 'PVC', label: 'Bigemini', fullName: 'Ventricular Bigeminy',  defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.5, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
+  { type: 'TRI', label: 'Trigemin', fullName: 'Ventricular Trigeminy', defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.7, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
 ];
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -507,6 +508,115 @@ function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: numbe
   };
 }
 
+// ── Premature Ventricular Contraction (trigeminy: N–N–PVC) ───────────────────
+
+function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO: number): WaveformData {
+  const baseBS      = 3600 / hr;
+  const coupling    = 0.72;              // PVC fires at 72 % of sinus cycle from preceding beat
+  const compensatory = 2.0 - coupling;  // = 1.28 × sinus cycle (same as bigeminy)
+
+  // Pattern: b%3===0 → N (full), b%3===1 → N (shortened to coupling interval),
+  //          b%3===2 → PVC (compensatory pause)
+  const beatStarts: number[] = [];
+  const beatLens:   number[] = [];
+  const beatTypes:  boolean[] = [];
+
+  let cursor = 0, b = 0;
+  while (cursor < SAMPLES + baseBS * 6) {
+    beatStarts.push(cursor);
+    const mod     = b % 3;
+    const isPVC_  = mod === 2;
+    const len     = Math.round(
+      mod === 1 ? baseBS * coupling :
+      mod === 2 ? baseBS * compensatory :
+                  baseBS
+    );
+    beatLens.push(len);
+    beatTypes.push(isPVC_);
+    cursor += len;
+    b++;
+  }
+
+  const nBeats = beatStarts.length;
+  const bSys   = new Float32Array(nBeats);
+  const bDia   = new Float32Array(nBeats);
+  const bCO    = new Float32Array(nBeats);
+
+  for (let bi = 0; bi < nBeats; bi++) {
+    if (beatTypes[bi]) {
+      // PVC: ineffective ejection
+      bSys[bi] = baseDia + (baseSys - baseDia) * 0.28 + 2 * (pr(bi + 100) * 2 - 1);
+      bDia[bi] = baseDia - 3 + 1 * (pr(bi + 200) * 2 - 1);
+      bCO[bi]  = baseCO * 0.15 + 0.04 * (pr(bi + 300) * 2 - 1);
+    } else {
+      // Normal sinus — post-compensatory beat (b%3===0) gets Frank-Starling boost
+      const postPVC = (bi > 0 && bi % 3 === 0) ? 1 : 0;
+      const rp      = (bi / (SAMPLES / baseBS)) * RESP_CYCLES * 2 * Math.PI;
+      bSys[bi] = baseSys + 6 * Math.sin(rp) + 2 * (pr(bi + 500) * 2 - 1) + postPVC * 6;
+      bDia[bi] = baseDia + 3 * Math.cos(rp)  + 1 * (pr(bi + 600) * 2 - 1);
+      bCO[bi]  = baseCO  + 0.3 * Math.sin(rp) + 0.1 * (pr(bi + 700) * 2 - 1) + postPVC * 0.15;
+    }
+  }
+
+  const sampleBI = new Int32Array(SAMPLES);
+  const sampleBP = new Float32Array(SAMPLES);
+  let cur = 0;
+  for (let i = 0; i < SAMPLES; i++) {
+    while (cur < nBeats - 2 && i >= beatStarts[cur + 1]) cur++;
+    sampleBI[i] = cur;
+    sampleBP[i] = (i - beatStarts[cur]) / beatLens[cur];
+  }
+
+  const ecg = new Float32Array(SAMPLES);
+  const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
+  const co  = new Float32Array(SAMPLES);
+
+  for (let i = 0; i < SAMPLES; i++) {
+    const bi     = sampleBI[i];
+    const bp     = sampleBP[i];
+    const isPVC_ = beatTypes[bi];
+    const wander = 0.04 * Math.sin((i / SAMPLES) * RESP_CYCLES * 2 * Math.PI);
+
+    let e = wander;
+    if (isPVC_) {
+      e += gaussian(bp, 0.17, 0.009, -0.07);
+      e += gaussian(bp, 0.22, 0.050,  1.10);
+      e += gaussian(bp, 0.34, 0.030,  0.40);
+      e += gaussian(bp, 0.65, 0.075, -0.58);
+    } else {
+      e += gaussian(bp, 0.13,  0.018,  0.18);
+      e += gaussian(bp, 0.265, 0.006, -0.18);
+      e += gaussian(bp, 0.285, 0.009,  1.15);
+      e += gaussian(bp, 0.305, 0.007, -0.32);
+      e += gaussian(bp, 0.52,  0.045,  0.28);
+      e += gaussian(bp, 0.68,  0.022,  0.04);
+    }
+    ecg[i] = e;
+
+    const sys = bSys[bi];
+    const dia = bDia[bi];
+    if (isPVC_) {
+      abp[i] = abpSampleWeak(bp, sys, dia);
+      art[i] = artSampleVT(bp, sys, dia);
+    } else {
+      abp[i] = abpSample(bp, sys, dia);
+      art[i] = artSample(bp, sys, dia);
+    }
+    co[i] = gaussian(bp, 0.44, 0.075, bCO[bi]);
+  }
+
+  return {
+    ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
+    beatSamples:   baseBS,
+    beatSysArr:    Array.from(bSys),
+    beatDiaArr:    Array.from(bDia),
+    beatCOArr:     Array.from(bCO),
+    beatTypeArr:   beatTypes,
+    beatStartsArr: beatStarts,
+  };
+}
+
 // ── Public dispatcher ─────────────────────────────────────────────────────────
 
 export function generateWaveforms(hr: number, rhythm: RhythmType): WaveformData {
@@ -519,5 +629,6 @@ export function generateWaveforms(hr: number, rhythm: RhythmType): WaveformData 
     case 'VT':  return generateVT(hr);
     case 'VF':  return generateVF();
     case 'PVC': return generatePVC(hr, 120, 80, 5.0);
+    case 'TRI': return generateTrigeminy(hr, 120, 80, 5.0);
   }
 }

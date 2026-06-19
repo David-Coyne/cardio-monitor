@@ -46,6 +46,7 @@ function getBeatStrength(now: number, heartRate: number, rhythmType: RhythmType)
   }
   let str = beatEnvelope(phase);
   if (rhythmType === "PVC" && Math.floor(now / beatMs) % 2 === 1) str *= 0.22;
+  if (rhythmType === "TRI" && Math.floor(now / beatMs) % 3 === 2) str *= 0.22;
   return str;
 }
 
