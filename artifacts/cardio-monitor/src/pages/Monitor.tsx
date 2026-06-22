@@ -24,7 +24,7 @@ function useMonitorLayout() {
     const isLandscape = vw > vh * 1.2;
     if (isLandscape) {
       const leftW = vw * 0.34;
-      const bodyH = vh - 52 - 50; // header + rhythm row
+      const bodyH = vh - 52 - 130; // header + rhythm grid + sound btn
       const s = Math.min(leftW * 1.38 / 158, bodyH * 1.32 / 178);
       return { scale: 1, isLandscape: true, heartW: Math.round(158 * s), heartH: Math.round(178 * s) };
     }
@@ -355,12 +355,38 @@ export default function Monitor() {
 
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
-            <div data-testid="heart-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
+            <div data-testid="heart-panel" style={{ flex: 1, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
               <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
             </div>
-            <div style={{ display: "flex", gap: 4, padding: "8px 10px", borderTop: "1px solid #0d2a0d", flexShrink: 0, alignItems: "center" }}>
-              {rhythmButtons}
-              <div style={{ width: 1, alignSelf: "stretch", background: "#1a3a1a", margin: "0 2px" }} />
+            <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 3 }}>
+                {RHYTHM_CONFIGS.map(cfg => {
+                  const active = rhythmType === cfg.type;
+                  const danger = cfg.isLethal;
+                  const col    = danger ? "#ff5555" : "#00ff41";
+                  return (
+                    <button
+                      key={cfg.type}
+                      data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
+                      onClick={() => handleRhythmChange(cfg.type)}
+                      style={{
+                        fontSize: "clamp(0.42rem, 0.75vw, 0.7rem)",
+                        fontWeight: "bold",
+                        padding: "3px 0",
+                        borderRadius: 3,
+                        letterSpacing: "0.04em",
+                        cursor: "pointer",
+                        color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
+                        background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
+                        border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
+                        boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
+                      }}
+                    >
+                      {cfg.label}
+                    </button>
+                  );
+                })}
+              </div>
               {soundBtn}
             </div>
           </div>
