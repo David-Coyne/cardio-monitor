@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { Heart3D } from "@/components/Heart3D";
-import { HeartCrossSection } from "@/components/HeartCrossSection";
 import {
   type RhythmType,
   RHYTHM_CONFIGS,
@@ -358,10 +357,7 @@ export default function Monitor() {
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
             <div data-testid="heart-panel" style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
-              {crossSection
-                ? <HeartCrossSection heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
-                : <Heart3D           heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
-              }
+              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} crossSection={crossSection} />
               <button
                 onClick={() => setCrossSection(v => !v)}
                 title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
@@ -609,10 +605,7 @@ export default function Monitor() {
           style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}`, position: "relative" }}
           data-testid="heart-panel"
         >
-          {crossSection
-            ? <HeartCrossSection heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
-            : <Heart3D           heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
-          }
+          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} crossSection={crossSection} />
           <button
             onClick={() => setCrossSection(v => !v)}
             title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}

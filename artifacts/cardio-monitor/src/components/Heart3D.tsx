@@ -13,11 +13,12 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import type { RhythmType } from "@/lib/rhythmGenerators";
 
 interface Heart3DProps {
-  heartRate: number;
-  rhythmType: RhythmType;
-  svgWidth?: number;
-  svgHeight?: number;
-  paused?: boolean;
+  heartRate:     number;
+  rhythmType:    RhythmType;
+  svgWidth?:     number;
+  svgHeight?:    number;
+  paused?:       boolean;
+  crossSection?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ uniform float u_xRot;
 uniform float u_yRot;
 uniform float u_time;
 uniform int   u_rhythm;
+uniform float u_cross;
 
 mat3 rotX(float a) {
   float c = cos(a), s = sin(a);
@@ -173,11 +175,89 @@ float shd(vec3 ro, vec3 rd, float b) {
   for(int i=0;i<14;i++){if(!done){float h=hSDF(ro+rd*t,b); if(h<0.001){res=0.0;done=true;}else{res=min(res,7.0*h/t);t+=clamp(h,0.012,0.18);if(t>2.6)done=true;}}}
   return clamp(res,0.0,1.0);
 }
+// ── Chamber colour for the 3-D cut face ─────────────────────────────────────
+vec3 chamberCol(vec3 p, float b) {
+  float ex = b * 0.044;
+  float lv = sdEll(p - vec3(-0.08,-0.10, 0.02),vec3(0.430+ex,    0.610+ex,    0.405+ex));
+  float rv = sdEll(p - vec3( 0.26,-0.04, 0.08),vec3(0.245+ex*0.7,0.448+ex*0.7,0.272+ex*0.7));
+  float la = sdEll(p - vec3(-0.22, 0.45,-0.12),vec3(0.232+ex*0.4,0.202+ex*0.4,0.252+ex*0.4));
+  float ra = sdEll(p - vec3( 0.26, 0.43,-0.07),vec3(0.212+ex*0.3,0.198+ex*0.3,0.218+ex*0.3));
+  vec3 oxyCol,deoCol;
+  if(u_rhythm==1){oxyCol=vec3(0.32,0.04,0.04);deoCol=vec3(0.04,0.08,0.40);}
+  else if(u_rhythm==2){oxyCol=vec3(0.60,0.06,0.06);deoCol=vec3(0.04,0.10,0.52);}
+  else{oxyCol=vec3(0.80,0.08,0.06);deoCol=vec3(0.05,0.13,0.62);}
+  vec3 wallCol=vec3(0.38,0.10,0.06);
+  float k=9.0;
+  float wLV=exp(-k*max(lv,0.0));float wRV=exp(-k*max(rv,0.0));
+  float wLA=exp(-k*max(la,0.0));float wRA=exp(-k*max(ra,0.0));
+  float wSum=wLV+wRV+wLA+wRA;
+  vec3 bloodCol=(oxyCol*(wLV+wLA)+deoCol*(wRV+wRA))/(wSum+0.001);
+  float minSDF=min(min(lv,rv),min(la,ra));
+  return mix(wallCol,bloodCol,smoothstep(0.0,0.04,-minSDF));
+}
 void main() {
   vec2 uv = (gl_FragCoord.xy/u_res)*2.0-1.0; uv.x *= u_res.x/u_res.y;
   mat3 R=rotY(u_yRot)*rotX(u_xRot), iR=rotX(-u_xRot)*rotY(-u_yRot);
   vec3 ro_w=vec3(0.0,0.04,2.85), rd_w=normalize(vec3(uv,-1.76));
   vec3 ro=iR*ro_w, rd=iR*rd_w;
+
+  if(u_cross>0.5){
+    // ── Cross-section: march with z>0 half clipped away ───────────────────
+    float tc=0.22; bool hitc=false;
+    for(int i=0;i<92;i++){if(!hitc){
+      vec3 p=ro+rd*tc;
+      float d=max(hSDF(p,u_beat),p.z);
+      if(d<0.0008){hitc=true;}else if(tc<5.8){tc+=d;}else{tc=5.8;}
+    }}
+    if(!hitc){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.018,0.060,0.130)*max(v,0.0)+vec3(0.006,0.022,0.058),1.0);return;}
+    vec3 posc=ro+rd*tc;
+    if(posc.z>-0.014){
+      // ── Cut face (z≈0): lit chamber blood ────────────────────────────
+      vec3 Nw=R*vec3(0.0,0.0,1.0), Vw=-rd_w;
+      vec3 L1c=normalize(vec3(1.5,2.2,2.4)),L2c=normalize(vec3(-2.0,0.5,1.0));
+      vec3 H1c=normalize(L1c+Vw);
+      float diffc=max(dot(Nw,L1c),0.0)*0.88+max(dot(Nw,L2c),0.0)*0.22+0.30;
+      float spc=pow(max(dot(Nw,H1c),0.0),16.0)*0.72;
+      float wallDist=clamp(-hSDF(posc,u_beat)*14.0,0.0,1.0);
+      vec3 col=chamberCol(posc,u_beat);
+      col*=diffc*wallDist;
+      col+=vec3(0.95,0.88,0.80)*spc*wallDist;
+      col+=col*u_beat*0.22;
+      col=col/(col+1.0);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+      gl_FragColor=vec4(col,1.0);
+    } else {
+      // ── Posterior wall: normal shading ───────────────────────────────
+      vec3 N=nrm(posc,u_beat),Nw=R*N,Vw=-rd_w;
+      float occ=ao(posc,N,u_beat);
+      vec3 skin;if(u_rhythm==1)skin=vec3(0.32,0.06,0.07);else if(u_rhythm==2)skin=vec3(0.72,0.09,0.05);else skin=vec3(0.86,0.17,0.08);
+      float thick=0.0;vec3 pi=posc;for(int j=0;j<8;j++){pi-=N*0.062;thick+=max(0.0,-hSDF(pi,u_beat));}
+      float sss=clamp(thick/0.42,0.0,1.0);
+      vec3 L1=normalize(vec3(1.5,2.2,2.4)),L2=normalize(vec3(-2.0,0.5,1.0)),L3=normalize(vec3(0.2,-1.5,-1.6));
+      vec3 L1l=iR*L1;
+      float d1=max(dot(Nw,L1),0.0),d2=max(dot(Nw,L2),0.0),d3=max(dot(Nw,L3),0.0);
+      vec3 H1=normalize(L1+Vw),H2=normalize(L2+Vw);
+      float sp1=pow(max(dot(Nw,H1),0.0),20.0),sp2=pow(max(dot(Nw,H2),0.0),10.0);
+      float sh=shd(posc+N*0.013,L1l,u_beat);
+      float fr=pow(1.0-max(dot(Nw,Vw),0.0),3.5);
+      float ss=pow(max(dot(rd_w,L1),0.0),5.0);
+      vec3 col=skin*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+d3*0.22*vec3(0.76,0.20,0.14)+vec3(0.10,0.018,0.016)*occ);
+      col+=sp1*sh*vec3(1.0,0.95,0.92)*1.30+sp2*vec3(0.72,0.84,1.0)*0.30;
+      col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
+      col+=fr*vec3(0.72,0.12,0.08)*0.28;col*=0.54+0.46*occ;
+      col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
+      float artRaw2=artD(posc);float am2=1.0-smoothstep(0.0,0.14,artRaw2);
+      vec3 artSkin2=vec3(0.82,0.60,0.32);
+      vec3 ac2=artSkin2*(d1*sh*1.8*vec3(1.0,0.95,0.88)+d2*0.35*vec3(0.5,0.60,0.72)+vec3(0.14,0.10,0.06)*occ);
+      float artSp2=pow(max(dot(Nw,H1),0.0),28.0)*sh;
+      ac2+=vec3(1.0,0.96,0.88)*artSp2*1.2;ac2+=artSkin2*u_beat*0.35;
+      col=mix(col,ac2,am2*0.97);
+      col=col/(col+1.0);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+      gl_FragColor=vec4(col,1.0);
+    }
+    return;
+  }
+
+  // ── Normal mode ──────────────────────────────────────────────────────────
   float t=0.22; bool hit=false;
   for(int i=0;i<92;i++){if(!hit){float d=hSDF(ro+rd*t,u_beat);if(d<0.0007){hit=true;}else{if(t<5.8)t+=d;else t=5.8;}}}
   if(!hit){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.018,0.060,0.130)*max(v,0.0)+vec3(0.006,0.022,0.058),1.0);return;}
@@ -201,17 +281,12 @@ void main() {
   col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
   float artRaw=artD(pos);
   float am=1.0-smoothstep(0.0,0.14,artRaw);
-  // Epicardial fat sheath: bright warm cream-yellow, strongly contrasting with myocardium
   vec3 artSkin=vec3(0.82,0.60,0.32);
-  // Lit artery surface
   vec3 ac=artSkin*(d1*sh*1.8*vec3(1.0,0.95,0.88)+d2*0.35*vec3(0.5,0.60,0.72)+vec3(0.14,0.10,0.06)*occ);
-  // Sharp specular highlight — arteries glisten wet
   float artSp=pow(max(dot(Nw,H1),0.0),28.0)*sh;
   ac+=vec3(1.0,0.96,0.88)*artSp*1.2;
-  // Pulsing glow along arteries with heartbeat
   ac+=artSkin*u_beat*0.35;
   col=mix(col,ac,am*0.97);
-  // Great vessels: salmon-peach with strong wet specular glistening
   float gm=1.0-smoothstep(0.0,0.10,gvD(pos));
   vec3 gvCol=vec3(0.82,0.48,0.28);
   vec3 gc=gvCol*(d1*sh*1.7*vec3(1.0,0.94,0.88)+d2*0.30*vec3(0.55,0.62,0.76)+vec3(0.16,0.10,0.07)*occ);
@@ -662,6 +737,7 @@ export function Heart3D({
   svgWidth,
   svgHeight,
   paused = false,
+  crossSection = false,
 }: Heart3DProps) {
   const w = svgWidth  ?? 158;
   const h = svgHeight ?? 178;
@@ -674,15 +750,17 @@ export function Heart3D({
   const [yRotDeg, setYRotDeg] = useState(0);
   const [hoverArt, setHoverArt] = useState<{ art: ArteryDef; cx: number; cy: number } | null>(null);
   const pausedRef   = useRef(paused);
+  const crossRef    = useRef(crossSection);
   const hrRef       = useRef(heartRate);
   const rhythmRef   = useRef(rhythmType);
   const wRef        = useRef(w);
   const hRef        = useRef(h);
   const rafRef      = useRef<number | null>(null);
 
-  useEffect(() => { pausedRef.current = paused;     }, [paused]);
-  useEffect(() => { hrRef.current     = heartRate;  }, [heartRate]);
-  useEffect(() => { rhythmRef.current = rhythmType; }, [rhythmType]);
+  useEffect(() => { pausedRef.current  = paused;        }, [paused]);
+  useEffect(() => { crossRef.current   = crossSection;  }, [crossSection]);
+  useEffect(() => { hrRef.current      = heartRate;     }, [heartRate]);
+  useEffect(() => { rhythmRef.current  = rhythmType;    }, [rhythmType]);
   useEffect(() => { wRef.current      = w;          }, [w]);
   useEffect(() => { hRef.current      = h;          }, [h]);
 
@@ -729,6 +807,7 @@ export function Heart3D({
       const uTime   = gl.getUniformLocation(prog, "u_time")!;
       const uRhythm = gl.getUniformLocation(prog, "u_rhythm")!;
       const uRes    = gl.getUniformLocation(prog, "u_res")!;
+      const uCross  = gl.getUniformLocation(prog, "u_cross")!;
 
       const setSize = (pw: number, ph: number) => {
         const cw = Math.max(1, Math.round(pw * dpr));
@@ -752,6 +831,7 @@ export function Heart3D({
         gl.uniform1f(uYRot, yRotRef.current);
         gl.uniform1f(uTime, now / 1000);
         gl.uniform1i(uRhythm, rhythm);
+        gl.uniform1f(uCross,  crossRef.current ? 1.0 : 0.0);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         rafRef.current = requestAnimationFrame(render);
       };
