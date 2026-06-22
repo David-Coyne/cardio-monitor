@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { Heart3D } from "@/components/Heart3D";
+import { HeartCrossSection } from "@/components/HeartCrossSection";
 import {
   type RhythmType,
   RHYTHM_CONFIGS,
@@ -47,6 +48,7 @@ export default function Monitor() {
   const [hr, setHr] = useState(72);
   const [hrDraft, setHrDraft] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
+  const [crossSection, setCrossSection] = useState(false);
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -355,8 +357,25 @@ export default function Monitor() {
 
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
-            <div data-testid="heart-panel" style={{ flex: 1, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
-              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
+            <div data-testid="heart-panel" style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
+              {crossSection
+                ? <HeartCrossSection heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
+                : <Heart3D           heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} />
+              }
+              <button
+                onClick={() => setCrossSection(v => !v)}
+                title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
+                style={{
+                  position: "absolute", top: 4, right: 4, zIndex: 10,
+                  fontSize: 7, fontFamily: "monospace", fontWeight: "bold",
+                  letterSpacing: "0.08em", padding: "2px 4px", borderRadius: 3, cursor: "pointer",
+                  color:      crossSection ? "rgba(0,255,65,0.85)"   : "rgba(210,200,80,0.80)",
+                  background: crossSection ? "rgba(0,255,65,0.07)"   : "rgba(210,200,80,0.07)",
+                  border:    `1px solid ${crossSection ? "rgba(0,255,65,0.35)" : "rgba(210,200,80,0.35)"}`,
+                }}
+              >
+                {crossSection ? "3D" : "SECT"}
+              </button>
             </div>
             <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 3 }}>
@@ -587,10 +606,27 @@ export default function Monitor() {
       >
         <div
           className="flex items-center justify-center rounded"
-          style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}` }}
+          style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}`, position: "relative" }}
           data-testid="heart-panel"
         >
-          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
+          {crossSection
+            ? <HeartCrossSection heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
+            : <Heart3D           heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} />
+          }
+          <button
+            onClick={() => setCrossSection(v => !v)}
+            title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
+            style={{
+              position: "absolute", top: 6, right: 6, zIndex: 10,
+              fontSize: 8, fontFamily: "monospace", fontWeight: "bold",
+              letterSpacing: "0.08em", padding: "3px 6px", borderRadius: 3, cursor: "pointer",
+              color:      crossSection ? "rgba(0,255,65,0.85)"   : "rgba(210,200,80,0.80)",
+              background: crossSection ? "rgba(0,255,65,0.07)"   : "rgba(210,200,80,0.07)",
+              border:    `1px solid ${crossSection ? "rgba(0,255,65,0.35)" : "rgba(210,200,80,0.35)"}`,
+            }}
+          >
+            {crossSection ? "3D" : "SECT"}
+          </button>
         </div>
 
       </div>
