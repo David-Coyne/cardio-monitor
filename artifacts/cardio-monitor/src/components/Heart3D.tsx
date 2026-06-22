@@ -175,25 +175,125 @@ float shd(vec3 ro, vec3 rd, float b) {
   for(int i=0;i<14;i++){if(!done){float h=hSDF(ro+rd*t,b); if(h<0.001){res=0.0;done=true;}else{res=min(res,7.0*h/t);t+=clamp(h,0.012,0.18);if(t>2.6)done=true;}}}
   return clamp(res,0.0,1.0);
 }
-// ── Chamber colour for the 3-D cut face ─────────────────────────────────────
+// ── Full anatomical chamber colour for the 3-D cut face ─────────────────────
 vec3 chamberCol(vec3 p, float b) {
   float ex = b * 0.044;
+
+  // ── Four chamber SDFs ────────────────────────────────────────────────────
   float lv = sdEll(p - vec3(-0.08,-0.10, 0.02),vec3(0.430+ex,    0.610+ex,    0.405+ex));
   float rv = sdEll(p - vec3( 0.26,-0.04, 0.08),vec3(0.245+ex*0.7,0.448+ex*0.7,0.272+ex*0.7));
   float la = sdEll(p - vec3(-0.22, 0.45,-0.12),vec3(0.232+ex*0.4,0.202+ex*0.4,0.252+ex*0.4));
   float ra = sdEll(p - vec3( 0.26, 0.43,-0.07),vec3(0.212+ex*0.3,0.198+ex*0.3,0.218+ex*0.3));
+
+  // ── Tissue colors ─────────────────────────────────────────────────────────
   vec3 oxyCol,deoCol;
   if(u_rhythm==1){oxyCol=vec3(0.32,0.04,0.04);deoCol=vec3(0.04,0.08,0.40);}
   else if(u_rhythm==2){oxyCol=vec3(0.60,0.06,0.06);deoCol=vec3(0.04,0.10,0.52);}
   else{oxyCol=vec3(0.80,0.08,0.06);deoCol=vec3(0.05,0.13,0.62);}
-  vec3 wallCol=vec3(0.38,0.10,0.06);
+  vec3 wallCol  = vec3(0.38,0.10,0.06);   // myocardium (dark red-brown)
+  vec3 endoCol  = vec3(0.62,0.28,0.20);   // endocardium (pinkish inner lining)
+  vec3 valveCol = vec3(0.88,0.80,0.50);   // fibrous valve / annulus (cream-ivory)
+  vec3 papCol   = vec3(0.46,0.11,0.07);   // papillary muscle (dense myocardium)
+  vec3 chordCol = vec3(0.74,0.52,0.30);   // chordae tendineae (pale tendon)
+
+  // ── Base: blood vs myocardium ─────────────────────────────────────────────
   float k=9.0;
-  float wLV=exp(-k*max(lv,0.0));float wRV=exp(-k*max(rv,0.0));
-  float wLA=exp(-k*max(la,0.0));float wRA=exp(-k*max(ra,0.0));
+  float wLV=exp(-k*max(lv,0.0)),wRV=exp(-k*max(rv,0.0));
+  float wLA=exp(-k*max(la,0.0)),wRA=exp(-k*max(ra,0.0));
   float wSum=wLV+wRV+wLA+wRA;
   vec3 bloodCol=(oxyCol*(wLV+wLA)+deoCol*(wRV+wRA))/(wSum+0.001);
   float minSDF=min(min(lv,rv),min(la,ra));
-  return mix(wallCol,bloodCol,smoothstep(0.0,0.04,-minSDF));
+  float inBlood=smoothstep(0.0,0.042,-minSDF);
+
+  // ── ENDOCARDIUM: thin bright lining at the inner wall surface ─────────────
+  float endoF=smoothstep(0.0,0.030,-minSDF)*(1.0-smoothstep(0.030,0.082,-minSDF));
+
+  // ── PAPILLARY MUSCLES ─────────────────────────────────────────────────────
+  // LV anterolateral papillary (projects from lateral free wall into cavity)
+  float pmLVa=sdEll(p-vec3(-0.30,-0.06,0.01),vec3(0.066,0.122,0.060));
+  // LV posteromedial papillary (projects from medial wall toward septum)
+  float pmLVp=sdEll(p-vec3( 0.02,-0.04,0.02),vec3(0.058,0.112,0.055));
+  // RV anterior papillary (smaller, right side)
+  float pmRVa=sdEll(p-vec3( 0.40, 0.01,0.10),vec3(0.042,0.086,0.040));
+  // RV moderator band (septomarginal trabecula, crosses RV cavity)
+  float modBnd=tapCap(p,vec3(0.16,-0.10,0.08),vec3(0.40,-0.01,0.11),0.024,0.018);
+  float papAll=min(min(pmLVa,pmLVp),min(pmRVa,modBnd));
+  float papF=smoothstep(0.012,-0.008,papAll)*inBlood;
+
+  // ── CHORDAE TENDINEAE: tendons from papillary tips to valve leaflets ───────
+  // LV anterolateral chordae (fan to both mitral leaflets)
+  float chLVa1=tapCap(p,vec3(-0.30,0.07,0.01),vec3(-0.20,0.27,0.00),0.010,0.005);
+  float chLVa2=tapCap(p,vec3(-0.30,0.07,0.01),vec3(-0.06,0.27,0.01),0.009,0.005);
+  // LV posteromedial chordae
+  float chLVp1=tapCap(p,vec3( 0.02,0.07,0.02),vec3(-0.08,0.27,0.01),0.010,0.005);
+  float chLVp2=tapCap(p,vec3( 0.02,0.07,0.02),vec3(-0.26,0.27,0.00),0.009,0.004);
+  // RV chordae to tricuspid
+  float chRV  =tapCap(p,vec3( 0.40,0.07,0.10),vec3( 0.28,0.25,0.06),0.007,0.004);
+  float chorAll=min(min(min(chLVa1,chLVa2),min(chLVp1,chLVp2)),chRV);
+  float chordF=smoothstep(0.007,-0.003,chorAll)*inBlood*(1.0-papF);
+
+  // ── MITRAL VALVE (LA→LV, bicuspid) ────────────────────────────────────────
+  // Fibrous annulus band at AV junction y≈0.275
+  float mvY=0.275;
+  float mvBand=max(abs(p.y-mvY)-0.016, max(-0.40-p.x, p.x-0.06));
+  // Anterior leaflet (large, from posterior aorta side)
+  float mvAL=tapCap(p,vec3(-0.30,mvY+0.006,0.01),vec3(-0.04,mvY-0.040,0.01),0.014,0.008);
+  // Posterior leaflet (three scallops, simplified as one)
+  float mvPL=tapCap(p,vec3(-0.04,mvY+0.006,0.00),vec3(-0.30,mvY-0.032,0.00),0.012,0.007);
+  float mvAll=min(mvBand,min(mvAL,mvPL));
+  float mvF=smoothstep(0.010,-0.005,mvAll);
+
+  // ── TRICUSPID VALVE (RA→RV, three leaflets) ───────────────────────────────
+  float tvY=0.262;
+  float tvBand=max(abs(p.y-tvY)-0.014, max(0.10-p.x, p.x-0.44));
+  float tvL1=tapCap(p,vec3(0.14,tvY+0.005,0.03),vec3(0.28,tvY-0.036,0.04),0.012,0.007);
+  float tvL2=tapCap(p,vec3(0.28,tvY+0.005,0.04),vec3(0.42,tvY-0.030,0.02),0.011,0.006);
+  float tvL3=tapCap(p,vec3(0.38,tvY+0.005,-0.01),vec3(0.16,tvY-0.028,-0.01),0.010,0.006);
+  float tvAll=min(tvBand,min(tvL1,min(tvL2,tvL3)));
+  float tvF=smoothstep(0.010,-0.005,tvAll);
+
+  // ── AORTIC VALVE (LV outflow, three semilunar cusps) ─────────────────────
+  float aoY=0.500;
+  float aoBand=max(abs(p.y-aoY)-0.013, max(-0.15-p.x, p.x-0.03));
+  float aoCL=tapCap(p,vec3(-0.14,aoY+0.004,0.01),vec3(-0.04,aoY-0.030,0.01),0.012,0.006);
+  float aoCC=tapCap(p,vec3(-0.12,aoY+0.004,-0.02),vec3(-0.06,aoY-0.026,-0.02),0.010,0.005);
+  float aoCR=tapCap(p,vec3(-0.06,aoY+0.004,0.04),vec3(-0.12,aoY-0.026,0.04),0.010,0.005);
+  float aoAll=min(aoBand,min(aoCL,min(aoCC,aoCR)));
+  float aoF=smoothstep(0.009,-0.004,aoAll);
+
+  // ── PULMONARY VALVE (RV outflow, three semilunar cusps) ──────────────────
+  float pvY=0.440;
+  float pvBand=max(abs(p.y-pvY)-0.012, max(0.13-p.x, p.x-0.35));
+  float pvC1=tapCap(p,vec3(0.14,pvY+0.003,0.07),vec3(0.24,pvY-0.026,0.08),0.010,0.005);
+  float pvC2=tapCap(p,vec3(0.24,pvY+0.003,0.04),vec3(0.34,pvY-0.023,0.06),0.009,0.005);
+  float pvC3=tapCap(p,vec3(0.34,pvY+0.003,0.08),vec3(0.20,pvY-0.021,0.10),0.009,0.004);
+  float pvAll=min(pvBand,min(pvC1,min(pvC2,pvC3)));
+  float pvF=smoothstep(0.008,-0.004,pvAll);
+
+  float valveF=max(max(mvF,tvF),max(aoF,pvF));
+
+  // ── TRABECULAR TEXTURE (muscular ridges lining the ventricles) ────────────
+  float inVent=smoothstep(0.0,0.04,max(-lv,-rv));
+  float tbDepth=-minSDF;
+  float tbZone=smoothstep(0.030,0.064,tbDepth)*(1.0-smoothstep(0.10,0.19,tbDepth));
+  float tbN1=n3(p*9.0+vec3(0.3,0.1,0.7));
+  float tbN2=n3(p*19.0+vec3(0.6,0.8,0.2));
+  float tbF=tbZone*step(0.62,tbN1)*step(0.56,tbN2)*0.40*inVent*(1.0-papF)*(1.0-valveF);
+
+  // ── FOSSA OVALIS (oval depression in interatrial septum) ─────────────────
+  // Thin translucent area in IAS at x≈0.10, y≈0.43 (between RA and LA)
+  float foR=length(vec2((p.x-0.10)*1.4, p.y-0.43))-0.046;
+  float foF=smoothstep(0.012,-0.005,foR)*smoothstep(0.0,0.018,minSDF);
+
+  // ── COMPOSE ───────────────────────────────────────────────────────────────
+  vec3 col=mix(wallCol,bloodCol,inBlood);
+  col=mix(col,endoCol,endoF*0.72*(1.0-papF)*(1.0-valveF));
+  col=mix(col,wallCol*0.78,tbF);
+  col=mix(col,papCol,papF);
+  col=mix(col,chordCol,chordF*0.85);
+  col=mix(col,valveCol,valveF);
+  col=mix(col,endoCol*1.5,foF*0.55);
+  return col;
 }
 void main() {
   vec2 uv = (gl_FragCoord.xy/u_res)*2.0-1.0; uv.x *= u_res.x/u_res.y;
