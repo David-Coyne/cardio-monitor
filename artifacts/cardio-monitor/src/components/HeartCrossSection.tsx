@@ -1,478 +1,335 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect } from "react";
 import type { RhythmType } from "@/lib/rhythmGenerators";
 
-// ── Props (same interface as Heart3D for easy swapping) ───────────────────────
+// ── Props (mirrors Heart3D) ───────────────────────────────────────────────────
 interface Props {
-  heartRate:   number;
-  rhythmType:  RhythmType;
-  svgWidth?:   number;
-  svgHeight?:  number;
-  paused?:     boolean;
+  heartRate:  number;
+  rhythmType: RhythmType;
+  svgWidth?:  number;
+  svgHeight?: number;
+  paused?:    boolean;
 }
 
-// ── Beat strength helper (mirrors Heart3D logic) ──────────────────────────────
-function getBeat(now: number, hr: number, rhythmType: RhythmType, paused: boolean): number {
+// ── Beat helper (same logic as Heart3D) ──────────────────────────────────────
+function getBeat(now: number, hr: number, rt: RhythmType, paused: boolean): number {
   if (paused) return 0;
   const period = 60000 / Math.max(hr, 1);
   const phase  = (now % period) / period;
-  if (rhythmType === "VF") {
-    const fp = (now % 180) / 180;
-    return Math.abs(Math.sin(fp * Math.PI)) * 0.45;
+  if (rt === "VF") {
+    return Math.abs(Math.sin((now % 180) / 180 * Math.PI)) * 0.42;
   }
   if (phase < 0.10) return phase / 0.10;
   if (phase < 0.38) return 1 - (phase - 0.10) / 0.28;
   return 0;
 }
 
-// ── Canvas drawing ────────────────────────────────────────────────────────────
-function rr(
+// ── Rounded-rect helper ───────────────────────────────────────────────────────
+function rrect(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number, r: number,
 ) {
-  const rx = Math.min(r, w / 2, h / 2);
+  const rx = Math.min(Math.abs(r), Math.abs(w) / 2, Math.abs(h) / 2);
+  if (w <= 0 || h <= 0) return;
   ctx.beginPath();
   ctx.moveTo(x + rx, y);
   ctx.lineTo(x + w - rx, y);
-  ctx.arcTo(x + w, y, x + w, y + rx, rx);
+  ctx.arcTo(x + w, y,     x + w, y + rx,  rx);
   ctx.lineTo(x + w, y + h - rx);
   ctx.arcTo(x + w, y + h, x + w - rx, y + h, rx);
   ctx.lineTo(x + rx, y + h);
-  ctx.arcTo(x, y + h, x, y + h - rx, rx);
-  ctx.lineTo(x, y + rx);
-  ctx.arcTo(x, y, x + rx, y, rx);
+  ctx.arcTo(x,     y + h, x,     y + h - rx, rx);
+  ctx.lineTo(x,     y + rx);
+  ctx.arcTo(x,     y,     x + rx, y,     rx);
   ctx.closePath();
 }
 
-function arrow(
+// ── Arrow helper ─────────────────────────────────────────────────────────────
+function arw(
   ctx: CanvasRenderingContext2D,
   x1: number, y1: number, x2: number, y2: number,
-  color: string, size: number,
+  color: string, lw: number, hs: number,
 ) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy);
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
   if (len < 1) return;
   const ux = dx / len, uy = dy / len;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = size * 0.55;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  // arrowhead
-  ctx.fillStyle = color;
-  ctx.beginPath();
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.fillStyle = color; ctx.beginPath();
   ctx.moveTo(x2, y2);
-  ctx.lineTo(x2 - ux * size * 2 - uy * size, y2 - uy * size * 2 + ux * size);
-  ctx.lineTo(x2 - ux * size * 2 + uy * size, y2 - uy * size * 2 - ux * size);
-  ctx.closePath();
-  ctx.fill();
+  ctx.lineTo(x2 - ux * hs - uy * hs * 0.55, y2 - uy * hs + ux * hs * 0.55);
+  ctx.lineTo(x2 - ux * hs + uy * hs * 0.55, y2 - uy * hs - ux * hs * 0.55);
+  ctx.closePath(); ctx.fill();
 }
 
-function drawSection(
-  ctx: CanvasRenderingContext2D,
-  W: number, H: number,
-  beat: number,
-  rhythmType: RhythmType,
-) {
-  const isVF = rhythmType === "VF";
-  const isVT = rhythmType === "VT";
-  const s = beat; // 0=diastole, 1=systole
+// ── Main draw ─────────────────────────────────────────────────────────────────
+function draw(ctx: CanvasRenderingContext2D, W: number, H: number, beat: number, rt: RhythmType) {
+  const isVF = rt === "VF";
+  const isVT = rt === "VT";
+  const s    = beat;  // 0=diastole → 1=systole
 
-  // ── Background ─────────────────────────────────────────────────────────────
+  // Clear
   ctx.clearRect(0, 0, W, H);
   const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#020c07");
-  bg.addColorStop(1, "#030e09");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
+  bg.addColorStop(0, "#021005"); bg.addColorStop(1, "#020c04");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-  // ── Layout: anatomy in frontal plane ─────────────────────────────────────
-  // Convention: viewer's LEFT = anatomical RIGHT (RA/RV, deoxygenated)
-  //             viewer's RIGHT = anatomical LEFT  (LA/LV, oxygenated)
+  // ── Colours ──────────────────────────────────────────────────────────────
+  const oR  = isVF ? "#5c1414" : isVT ? "#922018" : "#c42b22";
+  const oR2 = isVF ? "#3a0c0c" : isVT ? "#661612" : "#8a1e18";
+  const dB  = isVF ? "#121440" : "#2a3ab0";
+  const dB2 = isVF ? "#0a0c2c" : "#1a2478";
+  const wall = isVF ? "#503828" : isVT ? "#6a3c2a" : "#8c4838";
+  const wallD = isVF ? "#3a2818" : "#5e3020";
+  const wallL = isVF ? "#6a4030" : "#a85844";
+  const valC  = "#c49440";
 
-  const gvY   = H * 0.04;   // great vessel tops
-  const hTop  = H * 0.24;   // top of atria / pericardium
-  const avY   = H * 0.50;   // AV valve plane
-  const apexY = H * 0.92;   // LV apex
+  // ── Layout (all in CSS pixels, DPR-scaled by caller) ─────────────────────
+  // Leave ~4px margin all sides; great vessels use top 12% of H
+  const mx  = W * 0.03;                // left/right margin
+  const gvH = H * 0.10;               // great-vessel stub height
+  const hTop = H * 0.14;              // top of pericardial silhouette
+  const avY  = H * 0.50;             // AV valve plane
+  const apY  = H * 0.94;             // LV apex Y
 
-  // Septum (IVS + IAS) centred at:
-  const sepCx = W * 0.50;
-  const sepHW  = W * 0.026;  // half-width of septum
+  // Septum
+  const sepCx = W * 0.49;
+  const sepHW  = W * 0.024;
+  const bulge  = s * W * 0.016;       // IVS bulges into RV during systole
 
-  // IVS bulges toward RV (LEFT) during systole
-  const sepBulge = s * W * 0.018;
+  // Atria boundaries (squeeze inward during systole)
+  const raL = mx        + s * W * 0.008;
+  const raR = sepCx - sepHW - bulge - s * W * 0.005;
+  const laL = sepCx + sepHW             + s * W * 0.005;
+  const laR = W - mx    - s * W * 0.008;
 
-  // ── Blood colors ────────────────────────────────────────────────────────────
-  const oxyR  = isVF ? "#3a1010" : isVT ? "#8c2016" : "#be2e24";
-  const oxyR2 = isVF ? "#260a0a" : isVT ? "#5c1210" : "#861e18";
-  const deoB  = isVF ? "#101030" : "#2c3ca8";
-  const deoB2 = isVF ? "#080820" : "#1c2870";
-  const wall  = isVF ? "#503020" : isVT ? "#6a3828" : "#8a4838";
-  const wallD = isVF ? "#382010" : "#5e3020";
-  const wallL = isVF ? "#643828" : "#a45644";
-  const valve = "#c49440";
+  // RV (crescent, doesn't reach apex)
+  const rvL = mx        + s * W * 0.012;
+  const rvR = sepCx - sepHW - bulge;
+  const rvBotY = H * 0.77 - s * H * 0.04;
 
-  // ── Key X positions ─────────────────────────────────────────────────────────
-  // Right side (RA/RV): x: W*0.05 → sepCx
-  // Left  side (LA/LV): x: sepCx  → W*0.95
-
-  // ── OUTER PERICARDIAL SILHOUETTE ────────────────────────────────────────────
-  ctx.beginPath();
-  ctx.moveTo(W * 0.04, hTop);
-  ctx.lineTo(W * 0.96, hTop);
-  ctx.lineTo(W * 0.96, apexY - H * 0.10);
-  ctx.bezierCurveTo(W * 0.96, apexY + H * 0.01, W * 0.65, apexY + H * 0.02, W * 0.50, apexY - H * 0.01);
-  ctx.bezierCurveTo(W * 0.35, apexY + H * 0.02, W * 0.04, apexY + H * 0.01, W * 0.04, apexY - H * 0.10);
-  ctx.closePath();
-  const wallGrad = ctx.createLinearGradient(W * 0.04, hTop, W * 0.96, apexY);
-  wallGrad.addColorStop(0.0, wallL);
-  wallGrad.addColorStop(0.5, wall);
-  wallGrad.addColorStop(1.0, wallD);
-  ctx.fillStyle = wallGrad;
-  ctx.fill();
-
-  // Subtle outer glow
-  ctx.strokeStyle = isLethalRhythm(rhythmType)
-    ? "rgba(255,60,60,0.18)"
-    : "rgba(100,200,100,0.08)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // ── RIGHT ATRIUM (RA) — left of septum, top ────────────────────────────────
-  const raL  = W * 0.07 + s * W * 0.008;
-  const raR  = sepCx - sepHW - sepBulge - s * W * 0.006;
-  const raT  = hTop + H * 0.025;
-  const raB  = avY - H * 0.01;
-  const raH  = raB - raT;
-  const raW  = raR - raL;
-  if (raW > 2 && raH > 2) {
-    rr(ctx, raL, raT, raW, raH, H * 0.03);
-    const raGrad = ctx.createLinearGradient(raL, raT, raR, raB);
-    raGrad.addColorStop(0, deoB);
-    raGrad.addColorStop(1, deoB2);
-    ctx.fillStyle = raGrad;
-    ctx.fill();
-  }
-
-  // ── LEFT ATRIUM (LA) — right of septum, top ────────────────────────────────
-  const laL  = sepCx + sepHW + s * W * 0.006;
-  const laR  = W * 0.93 - s * W * 0.008;
-  const laT  = hTop + H * 0.025;
-  const laB  = avY - H * 0.01;
-  const laH  = laB - laT;
-  const laW  = laR - laL;
-  if (laW > 2 && laH > 2) {
-    rr(ctx, laL, laT, laW, laH, H * 0.03);
-    const laGrad = ctx.createLinearGradient(laL, laT, laR, laB);
-    laGrad.addColorStop(0, oxyR);
-    laGrad.addColorStop(1, oxyR2);
-    ctx.fillStyle = laGrad;
-    ctx.fill();
-  }
-
-  // ── RIGHT VENTRICLE (RV) — left of septum, crescent-shaped ────────────────
-  // RV contracts during systole (narrowing from right toward the septum)
-  const rvL   = W * 0.05 + s * W * 0.015;
-  const rvRat = sepCx - sepHW - sepBulge;   // right edge at septum
-  const rvTop = avY + H * 0.008;
-  const rvBot = apexY - H * 0.14 - s * H * 0.04;  // RV doesn't reach apex
-  const rvMid = (rvL + rvRat) / 2;
-  ctx.beginPath();
-  ctx.moveTo(rvL, rvTop);
-  ctx.lineTo(rvRat, rvTop);
-  ctx.lineTo(rvRat, rvBot);
-  ctx.bezierCurveTo(rvRat, rvBot + H * 0.04, rvMid + W * 0.04, rvBot + H * 0.06, rvMid, rvBot + H * 0.05);
-  ctx.bezierCurveTo(rvMid - W * 0.04, rvBot + H * 0.06, rvL, rvBot + H * 0.04, rvL, rvBot);
-  ctx.closePath();
-  const rvGrad = ctx.createLinearGradient(rvL, rvTop, rvRat, rvBot);
-  rvGrad.addColorStop(0, deoB);
-  rvGrad.addColorStop(1, deoB2);
-  ctx.fillStyle = rvGrad;
-  ctx.fill();
-
-  // ── LEFT VENTRICLE (LV) — right of septum, thick-walled oval ─────────────
-  // LV is the main pump — thick wall, contracts strongly
-  const lvWall = W * 0.07;  // wall thickness
-  const lvL   = sepCx + sepHW + lvWall * 0.72 + s * W * 0.018; // cavity left (wall thickens)
-  const lvR   = W * 0.94 - lvWall * 0.72 - s * W * 0.018;      // cavity right
-  const lvTop = avY + H * 0.008;
+  // LV cavity (thick wall, tapers to apex)
+  const lvWall = W * 0.065;
+  const lvL = sepCx + sepHW + lvWall * 0.68 + s * W * 0.018;
+  const lvR = W - mx - lvWall * 0.68        - s * W * 0.018;
+  const lvApY = apY - H * 0.04 - s * H * 0.04;
   const lvApX = (lvL + lvR) / 2;
-  const lvApY = apexY - H * 0.04 - s * H * 0.05; // apex moves up during systole
+
+  // ── 1. Outer pericardial body (myocardium silhouette) ────────────────────
   ctx.beginPath();
-  ctx.moveTo(lvL, lvTop);
-  ctx.lineTo(lvR, lvTop);
-  ctx.bezierCurveTo(lvR, lvTop + (lvApY - lvTop) * 0.5, lvApX + (lvR - lvL) * 0.22, lvApY, lvApX, lvApY);
-  ctx.bezierCurveTo(lvApX - (lvR - lvL) * 0.22, lvApY, lvL, lvTop + (lvApY - lvTop) * 0.5, lvL, lvTop);
+  ctx.moveTo(mx, hTop);
+  ctx.lineTo(W - mx, hTop);
+  ctx.lineTo(W - mx, apY - H * 0.10);
+  ctx.bezierCurveTo(W - mx, apY + H * 0.005, W * 0.65, apY + H * 0.012, W * 0.5, apY - H * 0.01);
+  ctx.bezierCurveTo(W * 0.35, apY + H * 0.012, mx, apY + H * 0.005, mx, apY - H * 0.10);
   ctx.closePath();
-  const lvGrad = ctx.createLinearGradient(lvL, lvTop, lvR, lvApY);
-  lvGrad.addColorStop(0, oxyR);
-  lvGrad.addColorStop(1, oxyR2);
-  ctx.fillStyle = lvGrad;
-  ctx.fill();
+  const wallGrd = ctx.createLinearGradient(mx, hTop, W - mx, apY);
+  wallGrd.addColorStop(0, wallL); wallGrd.addColorStop(0.55, wall); wallGrd.addColorStop(1, wallD);
+  ctx.fillStyle = wallGrd; ctx.fill();
+  ctx.strokeStyle = isVF ? "rgba(255,50,50,0.15)" : "rgba(80,200,80,0.07)";
+  ctx.lineWidth = 1.2; ctx.stroke();
 
-  // ── SEPTUM (IVS above, IAS below AV) ──────────────────────────────────────
-  const sepL = sepCx - sepHW - sepBulge;
-  const sepR = sepCx + sepHW;
+  // ── 2. Right Atrium ───────────────────────────────────────────────────────
+  const raT = hTop + H * 0.022, raB = avY - H * 0.008;
+  if (raR > raL + 2) {
+    rrect(ctx, raL, raT, raR - raL, raB - raT, H * 0.028);
+    const g = ctx.createLinearGradient(raL, raT, raR, raB);
+    g.addColorStop(0, dB); g.addColorStop(1, dB2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // ── 3. Left Atrium ────────────────────────────────────────────────────────
+  const laT = hTop + H * 0.022, laB = avY - H * 0.008;
+  if (laR > laL + 2) {
+    rrect(ctx, laL, laT, laR - laL, laB - laT, H * 0.028);
+    const g = ctx.createLinearGradient(laL, laT, laR, laB);
+    g.addColorStop(0, oR); g.addColorStop(1, oR2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // ── 4. Right Ventricle ────────────────────────────────────────────────────
+  if (rvR > rvL + 2) {
+    const rvT = avY + H * 0.006;
+    const mid = (rvL + rvR) / 2;
+    ctx.beginPath();
+    ctx.moveTo(rvL, rvT); ctx.lineTo(rvR, rvT);
+    ctx.lineTo(rvR, rvBotY);
+    ctx.bezierCurveTo(rvR, rvBotY + H * 0.04, mid + W * 0.035, rvBotY + H * 0.06, mid, rvBotY + H * 0.055);
+    ctx.bezierCurveTo(mid - W * 0.035, rvBotY + H * 0.06, rvL, rvBotY + H * 0.04, rvL, rvBotY);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(rvL, rvT, rvR, rvBotY);
+    g.addColorStop(0, dB); g.addColorStop(1, dB2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // ── 5. Left Ventricle ────────────────────────────────────────────────────
+  if (lvR > lvL + 2) {
+    const lvT = avY + H * 0.006;
+    ctx.beginPath();
+    ctx.moveTo(lvL, lvT); ctx.lineTo(lvR, lvT);
+    ctx.bezierCurveTo(lvR, lvT + (lvApY - lvT) * 0.52, lvApX + (lvR - lvL) * 0.20, lvApY, lvApX, lvApY);
+    ctx.bezierCurveTo(lvApX - (lvR - lvL) * 0.20, lvApY, lvL, lvT + (lvApY - lvT) * 0.52, lvL, lvT);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(lvL, lvT, lvR, lvApY);
+    g.addColorStop(0, oR); g.addColorStop(1, oR2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // ── 6. Septum (IVS + IAS) ────────────────────────────────────────────────
+  const sepL = sepCx - sepHW - bulge, sepR = sepCx + sepHW;
   if (sepR > sepL) {
-    rr(ctx, sepL, hTop, sepR - sepL, apexY - hTop - H * 0.08, 0);
-    const sepGrad = ctx.createLinearGradient(sepL, hTop, sepR, hTop);
-    sepGrad.addColorStop(0, wallD);
-    sepGrad.addColorStop(0.5, wall);
-    sepGrad.addColorStop(1, wallD);
-    ctx.fillStyle = sepGrad;
-    ctx.fill();
+    ctx.fillRect(sepL, hTop + 1, sepR - sepL, apY - hTop - H * 0.10);
+    const g = ctx.createLinearGradient(sepL, 0, sepR, 0);
+    g.addColorStop(0, wallD); g.addColorStop(0.5, wall); g.addColorStop(1, wallD);
+    ctx.fillStyle = g;
+    ctx.fillRect(sepL, hTop + 1, sepR - sepL, apY - hTop - H * 0.10);
   }
 
-  // Thin line between IAS (atria) and IVS (ventricles) sections
-  ctx.strokeStyle = "rgba(255,255,255,0.06)";
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(sepL, avY);
-  ctx.lineTo(sepR, avY);
-  ctx.stroke();
+  // ── 7. AV Valves ─────────────────────────────────────────────────────────
+  const vo = 1 - s;           // valve open amount
+  const vlw = Math.max(1.2, H * 0.010);
+  ctx.lineWidth = vlw; ctx.lineCap = "round"; ctx.strokeStyle = valC;
 
-  // ── AV VALVES ──────────────────────────────────────────────────────────────
-  // Closed during systole (s→1), open during diastole (s→0)
-  const valveOpen = 1 - s;  // 1=open, 0=closed
-  ctx.lineWidth = H * 0.012;
-  ctx.lineCap = "round";
-
-  // TRICUSPID VALVE (RA→RV), left of septum
+  // Tricuspid (RA→RV)
   const tvCx = (raL + raR) / 2;
-  const tvY  = avY;
-  ctx.strokeStyle = valve;
-  // Left leaflet
+  const tvSpread = (raR - raL) * 0.42;
+  [[tvCx - tvSpread, tvCx - tvSpread * 0.28],
+   [tvCx + tvSpread * 0.28, tvCx + tvSpread]].forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(a, avY);
+    ctx.quadraticCurveTo((a + b) / 2, avY + H * 0.042 * vo, b, avY);
+    ctx.stroke();
+  });
+  // Center leaflet
   ctx.beginPath();
-  ctx.moveTo(tvCx - W * 0.09, tvY);
-  ctx.quadraticCurveTo(
-    tvCx - W * 0.04, tvY + H * 0.045 * valveOpen,
-    tvCx, tvY,
-  );
-  ctx.stroke();
-  // Right leaflet
-  ctx.beginPath();
-  ctx.moveTo(tvCx + W * 0.09, tvY);
-  ctx.quadraticCurveTo(
-    tvCx + W * 0.04, tvY + H * 0.045 * valveOpen,
-    tvCx, tvY,
-  );
-  ctx.stroke();
-  // Septal leaflet
-  ctx.beginPath();
-  ctx.moveTo(tvCx - W * 0.02, tvY);
-  ctx.quadraticCurveTo(
-    tvCx, tvY + H * 0.038 * valveOpen,
-    tvCx + W * 0.02, tvY,
-  );
+  ctx.moveTo(tvCx - W * 0.018, avY);
+  ctx.quadraticCurveTo(tvCx, avY + H * 0.035 * vo, tvCx + W * 0.018, avY);
   ctx.stroke();
 
-  // MITRAL VALVE (LA→LV), right of septum
+  // Mitral (LA→LV)
   const mvCx = (laL + laR) / 2;
-  const mvY  = avY;
-  ctx.strokeStyle = valve;
-  // Anterior leaflet (larger)
-  ctx.beginPath();
-  ctx.moveTo(mvCx - W * 0.10, mvY);
-  ctx.quadraticCurveTo(
-    mvCx - W * 0.03, mvY + H * 0.050 * valveOpen,
-    mvCx, mvY,
-  );
-  ctx.stroke();
-  // Posterior leaflet (smaller)
-  ctx.beginPath();
-  ctx.moveTo(mvCx + W * 0.10, mvY);
-  ctx.quadraticCurveTo(
-    mvCx + W * 0.03, mvY + H * 0.038 * valveOpen,
-    mvCx, mvY,
-  );
-  ctx.stroke();
-
-  // ── GREAT VESSELS ──────────────────────────────────────────────────────────
-  const vesselR = H * 0.038;  // vessel tube radius (half-width)
-  const aoX  = W * 0.66;     // aorta x (connected to LV outflow)
-  const paX  = W * 0.34;     // pulmonary artery x (connected to RV outflow)
-  const svcX = W * 0.22;     // SVC x (entering RA)
-
-  // PULMONARY TRUNK (blue, deoxy)
-  const ptGrad = ctx.createLinearGradient(paX - vesselR, 0, paX + vesselR, 0);
-  ptGrad.addColorStop(0, deoB2);
-  ptGrad.addColorStop(0.5, "#3d51cc");
-  ptGrad.addColorStop(1, deoB2);
-  ctx.fillStyle = ptGrad;
-  rr(ctx, paX - vesselR, gvY, vesselR * 2, hTop - gvY + H * 0.01, vesselR);
-  ctx.fill();
-  // PA label
-  ctx.fillStyle = isVF ? "#3a4888" : "#6088cc";
-  ctx.font = `bold ${Math.max(7, H * 0.046)}px monospace`;
-  ctx.textAlign = "center";
-  ctx.fillText("PA", paX, gvY + H * 0.03);
-
-  // ASCENDING AORTA (red, oxy) + aortic arch hint
-  const aoGrad = ctx.createLinearGradient(aoX - vesselR, 0, aoX + vesselR, 0);
-  aoGrad.addColorStop(0, oxyR2);
-  aoGrad.addColorStop(0.5, isVF ? "#6a2020" : "#d83030");
-  aoGrad.addColorStop(1, oxyR2);
-  ctx.fillStyle = aoGrad;
-  rr(ctx, aoX - vesselR, gvY, vesselR * 2, hTop - gvY + H * 0.01, vesselR);
-  ctx.fill();
-  // Ao label
-  ctx.fillStyle = isVF ? "#883838" : "#d84040";
-  ctx.fillText("Ao", aoX, gvY + H * 0.03);
-
-  // SVC (dark blue, deoxy, entering RA)
-  const svcGrad = ctx.createLinearGradient(svcX - vesselR * 0.8, 0, svcX + vesselR * 0.8, 0);
-  svcGrad.addColorStop(0, deoB2);
-  svcGrad.addColorStop(0.5, deoB);
-  svcGrad.addColorStop(1, deoB2);
-  ctx.fillStyle = svcGrad;
-  rr(ctx, svcX - vesselR * 0.8, gvY + H * 0.06, vesselR * 1.6, hTop - gvY - H * 0.04, vesselR * 0.8);
-  ctx.fill();
-  ctx.fillStyle = isVF ? "#2a2a60" : "#4050a0";
-  ctx.font = `bold ${Math.max(6, H * 0.036)}px monospace`;
-  ctx.fillText("SVC", svcX, gvY + H * 0.055);
-
-  // ── SEMILUNAR VALVE OUTLINES ────────────────────────────────────────────────
-  // Aortic valve (LV outflow) — opens during systole
-  const aoValveY = hTop + H * 0.005;
-  ctx.strokeStyle = valve;
-  ctx.lineWidth = H * 0.010;
-  const aoOpen = s;
-  [-W * 0.025, 0, W * 0.025].forEach((dx) => {
+  const mvSpread = (laR - laL) * 0.44;
+  [[mvCx - mvSpread, mvCx - mvSpread * 0.18],
+   [mvCx + mvSpread * 0.18, mvCx + mvSpread]].forEach(([a, b]) => {
     ctx.beginPath();
-    ctx.moveTo(aoX + dx, aoValveY);
-    ctx.quadraticCurveTo(
-      aoX + dx * 0.5 + W * 0.010 * (aoOpen - 0.5),
-      aoValveY + H * 0.022 * (1 - aoOpen),
-      aoX, aoValveY,
-    );
+    ctx.moveTo(a, avY);
+    ctx.quadraticCurveTo((a + b) / 2, avY + H * 0.046 * vo, b, avY);
     ctx.stroke();
   });
 
-  // Pulmonary valve (RV outflow) — opens during systole
-  ctx.strokeStyle = "#7090d0";
-  [-W * 0.022, 0, W * 0.022].forEach((dx) => {
-    ctx.beginPath();
-    ctx.moveTo(paX + dx, aoValveY);
-    ctx.quadraticCurveTo(
-      paX + dx * 0.5 + W * 0.008 * (aoOpen - 0.5),
-      aoValveY + H * 0.022 * (1 - aoOpen),
-      paX, aoValveY,
-    );
-    ctx.stroke();
-  });
+  // ── 8. Great Vessels ─────────────────────────────────────────────────────
+  const vr  = W * 0.038;     // vessel half-width
+  const aoX = W * 0.67, paX = W * 0.33, svcX = W * 0.20;
+  const vTop = H * 0.01, vBot = hTop + H * 0.005;
 
-  // ── BLOOD FLOW ARROWS ──────────────────────────────────────────────────────
-  const as = H * 0.012; // arrow size
-  if (!isVF) {
-    if (s > 0.3) {
-      // Systole: LV → Ao, RV → PA
-      const aAlpha = Math.min(1, (s - 0.3) / 0.4);
-      arrow(ctx, aoX, hTop + H * 0.14, aoX, gvY + H * 0.06,
-        `rgba(220,80,70,${(aAlpha * 0.9).toFixed(2)})`, as);
-      arrow(ctx, paX, hTop + H * 0.14, paX, gvY + H * 0.06,
-        `rgba(60,90,200,${(aAlpha * 0.9).toFixed(2)})`, as);
-    } else {
-      // Diastole: LA → LV, RA → RV
-      const dAlpha = Math.min(1, (0.30 - s) / 0.30);
-      const mvMidX = (laL + laR) / 2;
-      const tvMidX = (raL + raR) / 2;
-      arrow(ctx, mvMidX, avY - H * 0.06, mvMidX, avY + H * 0.10,
-        `rgba(220,80,70,${(dAlpha * 0.85).toFixed(2)})`, as);
-      arrow(ctx, tvMidX, avY - H * 0.06, tvMidX, avY + H * 0.10,
-        `rgba(60,90,200,${(dAlpha * 0.85).toFixed(2)})`, as);
-    }
-  }
+  // PA (blue)
+  const paGrd = ctx.createLinearGradient(paX - vr, 0, paX + vr, 0);
+  paGrd.addColorStop(0, dB2); paGrd.addColorStop(0.5, isVF ? "#3040a0" : "#3d54d0"); paGrd.addColorStop(1, dB2);
+  ctx.fillStyle = paGrd; rrect(ctx, paX - vr, vTop + H * 0.005, vr * 2, vBot - vTop - H * 0.005, vr); ctx.fill();
 
-  // ── WALL THICKNESS HINT (LV outer wall visible on right side) ──────────────
-  // The right outer boundary of the heart = LV outer wall
-  ctx.strokeStyle = wallL;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(W * 0.96, hTop);
-  ctx.bezierCurveTo(W * 0.96, apexY - H * 0.10, W * 0.65, apexY + H * 0.01, W * 0.50, apexY - H * 0.01);
-  ctx.stroke();
+  // Ao (red)
+  const aoGrd = ctx.createLinearGradient(aoX - vr, 0, aoX + vr, 0);
+  aoGrd.addColorStop(0, oR2); aoGrd.addColorStop(0.5, isVF ? "#7a2020" : "#d43030"); aoGrd.addColorStop(1, oR2);
+  ctx.fillStyle = aoGrd; rrect(ctx, aoX - vr, vTop + H * 0.005, vr * 2, vBot - vTop - H * 0.005, vr); ctx.fill();
 
-  // ── CHAMBER LABELS ─────────────────────────────────────────────────────────
-  const lbl = (
-    text: string,
-    lx: number, ly: number,
-    col: string,
-    sz: number = Math.max(8, H * 0.054),
-    sub?: string,
-  ) => {
-    ctx.fillStyle = col;
-    ctx.font = `bold ${sz}px monospace`;
-    ctx.textAlign = "center";
-    ctx.fillText(text, lx, ly);
-    if (sub) {
-      ctx.font = `${Math.max(5, sz * 0.68)}px monospace`;
-      ctx.fillStyle = col.replace(/[\d.]+\)$/, "0.72)");
-      ctx.fillText(sub, lx, ly + sz * 0.9);
+  // SVC (dark blue, thinner)
+  const svcGrd = ctx.createLinearGradient(svcX - vr * 0.75, 0, svcX + vr * 0.75, 0);
+  svcGrd.addColorStop(0, dB2); svcGrd.addColorStop(0.5, dB); svcGrd.addColorStop(1, dB2);
+  ctx.fillStyle = svcGrd; rrect(ctx, svcX - vr * 0.75, vTop + H * 0.04, vr * 1.5, vBot - vTop - H * 0.04, vr * 0.75); ctx.fill();
+
+  // ── 9. Semilunar valves (at vessel roots) ────────────────────────────────
+  const svY = hTop + H * 0.003;
+  const cusps = (cx: number, color: string) => {
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, H * 0.008);
+    for (let i = -1; i <= 1; i++) {
+      const dx = i * vr * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(cx + dx, svY);
+      ctx.quadraticCurveTo(cx + dx * 0.4 + vr * 0.12 * (s - 0.5), svY + H * 0.020 * (1 - s), cx, svY);
+      ctx.stroke();
     }
   };
+  cusps(aoX, valC);
+  cusps(paX, isVF ? "#3a4888" : "#6090d8");
 
-  const raLabelX = (raL + raR) / 2;
-  const laLabelX = (laL + laR) / 2;
-  const lvLabelX = (lvL + lvR) / 2;
-  const rvLabelX = (W * 0.05 + sepCx) / 2;
+  // ── 10. Vessel labels ────────────────────────────────────────────────────
+  const fsv = Math.max(5.5, W * 0.055);
+  ctx.font = `bold ${fsv}px monospace`; ctx.textAlign = "center";
+  ctx.fillStyle = isVF ? "#334488" : "#5080cc"; ctx.fillText("PA", paX, vTop + H * 0.038);
+  ctx.fillStyle = isVF ? "#882828" : "#cc4040"; ctx.fillText("Ao", aoX, vTop + H * 0.038);
+  ctx.fillStyle = isVF ? "#223366" : "#3a5088"; ctx.fillText("SVC", svcX, vTop + H * 0.035);
 
-  lbl("RA", raLabelX, (raT + raB) / 2 + H * 0.015, isVF ? "rgba(40,50,150,0.7)" : "rgba(80,110,230,0.85)");
-  lbl("LA", laLabelX, (laT + laB) / 2 + H * 0.015, isVF ? "rgba(150,40,40,0.7)" : "rgba(230,90,80,0.85)");
-  lbl("LV", lvLabelX, (avY + lvApY) * 0.5, isVF ? "rgba(150,40,40,0.7)" : "rgba(230,90,80,0.85)");
-  lbl("RV", rvLabelX, (avY + rvBot) * 0.5 + H * 0.03, isVF ? "rgba(40,50,150,0.7)" : "rgba(80,110,230,0.85)");
+  // ── 11. Flow arrows ───────────────────────────────────────────────────────
+  if (!isVF) {
+    const as = Math.max(3.5, H * 0.028), alw = Math.max(0.8, H * 0.006);
+    if (s > 0.28) {
+      const a = Math.min(1, (s - 0.28) / 0.42);
+      arw(ctx, aoX, hTop + H * 0.16, aoX, hTop + H * 0.04, `rgba(210,70,60,${(a * 0.85).toFixed(2)})`, alw, as);
+      arw(ctx, paX, hTop + H * 0.16, paX, hTop + H * 0.04, `rgba(50,80,200,${(a * 0.85).toFixed(2)})`, alw, as);
+    } else {
+      const a = Math.min(1, (0.28 - s) / 0.28);
+      arw(ctx, (raL + raR) / 2, avY - H * 0.07, (raL + raR) / 2, avY + H * 0.09, `rgba(50,80,200,${(a * 0.8).toFixed(2)})`, alw, as);
+      arw(ctx, (laL + laR) / 2, avY - H * 0.07, (laL + laR) / 2, avY + H * 0.09, `rgba(210,70,60,${(a * 0.8).toFixed(2)})`, alw, as);
+    }
+  }
 
-  // Valve labels
-  const vSz = Math.max(5, H * 0.036);
-  ctx.fillStyle = `rgba(196,148,64,0.80)`;
-  ctx.font = `bold ${vSz}px monospace`;
-  ctx.textAlign = "center";
-  ctx.fillText("TV", (raL + raR) / 2, avY + H * 0.065);
-  ctx.fillText("MV", (laL + laR) / 2, avY + H * 0.065);
+  // ── 12. Chamber labels ────────────────────────────────────────────────────
+  const fsc = Math.max(7, W * 0.066);
+  const fss = Math.max(5, fsc * 0.62);
+  ctx.font = `bold ${fsc}px monospace`;
 
-  // IVS label
-  ctx.fillStyle = "rgba(160,110,80,0.60)";
-  ctx.font = `bold ${Math.max(5, H * 0.034)}px monospace`;
+  const lbl = (txt: string, x: number, y: number, col: string) => {
+    ctx.fillStyle = col; ctx.textAlign = "center";
+    ctx.fillText(txt, x, y);
+  };
+
+  const dCol = isVF ? "rgba(55,70,180,0.72)" : "rgba(80,115,235,0.88)";
+  const oCol = isVF ? "rgba(180,50,50,0.72)"  : "rgba(235,88,75,0.88)";
+
+  lbl("RA", (raL + raR) / 2, (raT + raB) / 2 + fsc * 0.35, dCol);
+  lbl("LA", (laL + laR) / 2, (laT + laB) / 2 + fsc * 0.35, oCol);
+  lbl("LV", (lvL + lvR) / 2, (avY + H * 0.006 + lvApY) * 0.5 + fsc * 0.2, oCol);
+
+  // RV label — in the crescent cavity
+  const rvMidX = (rvL + rvR) / 2;
+  const rvMidY = (avY + H * 0.006 + rvBotY) * 0.5 + fsc * 0.2;
+  lbl("RV", rvMidX, rvMidY, dCol);
+
+  // Valve labels (smaller)
+  ctx.font = `bold ${fss}px monospace`;
+  ctx.fillStyle = `rgba(196,148,64,0.78)`;
+  lbl("TV", (raL + raR) / 2, avY + H * 0.072, "rgba(196,148,64,0.78)");
+  lbl("MV", (laL + laR) / 2, avY + H * 0.072, "rgba(196,148,64,0.78)");
+
+  // IVS label (vertical, tiny)
   ctx.save();
-  ctx.translate(sepCx, (avY + apexY) / 2);
+  ctx.translate(sepCx + (bulge * 0.5), (avY + H * 0.006 + H * 0.80) / 2);
   ctx.rotate(-Math.PI / 2);
+  ctx.font = `bold ${Math.max(4.5, W * 0.040)}px monospace`;
+  ctx.fillStyle = "rgba(160,110,80,0.52)";
+  ctx.textAlign = "center";
   ctx.fillText("IVS", 0, 0);
   ctx.restore();
 
-  // ── RHYTHM STATE OVERLAY ───────────────────────────────────────────────────
+  // ── 13. VF overlay ────────────────────────────────────────────────────────
   if (isVF) {
-    ctx.fillStyle = "rgba(255,40,40,0.07)";
+    ctx.fillStyle = "rgba(200,30,30,0.065)";
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "rgba(255,50,50,0.55)";
-    ctx.font = `bold ${Math.max(7, H * 0.044)}px monospace`;
-    ctx.textAlign = "center";
-    ctx.fillText("FIBRILLATING", W / 2, H * 0.12);
   }
 }
 
-function isLethalRhythm(r: RhythmType) {
-  return r === "VF" || r === "VT";
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
-export function HeartCrossSection({
-  heartRate,
-  rhythmType,
-  svgWidth,
-  svgHeight,
-  paused = false,
-}: Props) {
+export function HeartCrossSection({ heartRate, rhythmType, svgWidth, svgHeight, paused = false }: Props) {
   const w = svgWidth  ?? 158;
   const h = svgHeight ?? 178;
 
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const hrRef      = useRef(heartRate);
-  const rhythmRef  = useRef(rhythmType);
-  const pausedRef  = useRef(paused);
-  const rafRef     = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hrRef     = useRef(heartRate);
+  const rtRef     = useRef(rhythmType);
+  const pausedRef = useRef(paused);
+  const rafRef    = useRef<number | null>(null);
 
   useEffect(() => { hrRef.current     = heartRate;  }, [heartRate]);
-  useEffect(() => { rhythmRef.current = rhythmType; }, [rhythmType]);
+  useEffect(() => { rtRef.current     = rhythmType; }, [rhythmType]);
   useEffect(() => { pausedRef.current = paused;     }, [paused]);
 
   useEffect(() => {
@@ -480,41 +337,33 @@ export function HeartCrossSection({
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
 
-    const setSize = (pw: number, ph: number) => {
-      const cw = Math.max(1, Math.round(pw * dpr));
-      const ch = Math.max(1, Math.round(ph * dpr));
-      if (canvas.width !== cw || canvas.height !== ch) {
-        canvas.width  = cw;
-        canvas.height = ch;
-      }
+    const sync = () => {
+      const cw = Math.max(1, Math.round(w * dpr));
+      const ch = Math.max(1, Math.round(h * dpr));
+      if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
     };
-    setSize(w, h);
-
+    sync();
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const render = () => {
-      setSize(w, h);
-      const now  = performance.now();
-      const beat = getBeat(now, hrRef.current, rhythmRef.current, pausedRef.current);
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      drawSection(ctx, w, h, beat, rhythmRef.current);
+    const tick = () => {
+      sync();
+      const beat = getBeat(performance.now(), hrRef.current, rtRef.current, pausedRef.current);
+      ctx.save(); ctx.scale(dpr, dpr);
+      draw(ctx, w, h, beat, rtRef.current);
       ctx.restore();
-      rafRef.current = requestAnimationFrame(render);
+      rafRef.current = requestAnimationFrame(tick);
     };
-    rafRef.current = requestAnimationFrame(render);
+    rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [w, h]);
 
-  const isLethal = isLethalRhythm(rhythmType);
+  const isLethal = rhythmType === "VF" || rhythmType === "VT";
 
   return (
-    <div
-      data-testid="heart-cross-section"
-      className="flex flex-col items-center"
-    >
+    <div className="flex flex-col items-center" data-testid="heart-cross-section">
+      {/* Canvas — same size/structure as Heart3D inner panel */}
       <div
         className="relative select-none"
         style={{ width: w, height: h, borderRadius: 4, overflow: "hidden" }}
@@ -523,24 +372,35 @@ export function HeartCrossSection({
           ref={canvasRef}
           style={{ width: w, height: h, display: "block" }}
         />
-        {/* Title bar */}
-        <div
-          style={{
-            position: "absolute",
-            top: 3, left: 0, right: 0,
-            textAlign: "center",
-            fontSize: Math.max(6, h * 0.038),
-            fontFamily: "monospace",
-            fontWeight: "bold",
-            letterSpacing: "0.12em",
-            color: isLethal
-              ? "rgba(255,100,100,0.72)"
-              : "rgba(0,255,65,0.55)",
-            pointerEvents: "none",
-          }}
-        >
-          CROSS-SECTION
-        </div>
+        {/* VF overlay text — same as Heart3D */}
+        {isLethal && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <span style={{ fontSize: 9, letterSpacing: 2, fontFamily: "monospace", fontWeight: "bold", color: "rgba(255,50,50,0.62)" }}>
+              {rhythmType === "VF" ? "FIBRILLATING" : "V-TACH"}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Legend strip — matches ~height of rotation sliders in Heart3D */}
+      <div
+        style={{
+          width: w,
+          marginTop: 6,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 7, fontFamily: "monospace", color: "rgba(80,115,235,0.75)" }}>
+          <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 1, background: "#2a3ab0", flexShrink: 0 }} />
+          Deoxygenated
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 7, fontFamily: "monospace", color: "rgba(220,80,65,0.75)" }}>
+          <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 1, background: "#c42b22", flexShrink: 0 }} />
+          Oxygenated
+        </span>
       </div>
     </div>
   );
