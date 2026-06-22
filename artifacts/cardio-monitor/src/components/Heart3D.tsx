@@ -107,6 +107,32 @@ float artD(vec3 p){
   float left = min(min(lm,lad),min(min(d1,d2),min(lcx,om1)));
   return min(left,min(rca,am));
 }
+// ── Great vessels (aortic arch, pulmonary trunk, SVC, branches) ─────────────
+float gvD(vec3 p){
+  // Ascending aorta (aortic root → arch)
+  float aa  = tapCap(p,vec3(-0.05, 0.64, 0.12),vec3(-0.03, 1.02, 0.07),0.090,0.082);
+  // Aortic arch (sweeps rightward across top)
+  float ab  = tapCap(p,vec3(-0.03, 1.02, 0.07),vec3( 0.24, 1.04, 0.01),0.082,0.074);
+  // Brachiocephalic trunk (first arch branch)
+  float bc  = tapCap(p,vec3( 0.08, 1.01, 0.05),vec3( 0.18, 1.28, 0.03),0.042,0.028);
+  // Left common carotid (second arch branch)
+  float lcc = tapCap(p,vec3(-0.02, 1.02, 0.06),vec3(-0.12, 1.30, 0.03),0.032,0.022);
+  // Left subclavian (third arch branch)
+  float ls  = tapCap(p,vec3(-0.06, 1.00, 0.06),vec3(-0.24, 1.24, 0.02),0.030,0.020);
+  // Pulmonary trunk (from RV outflow)
+  float pt  = tapCap(p,vec3( 0.24, 0.62, 0.14),vec3( 0.14, 0.96, 0.09),0.074,0.064);
+  // Left pulmonary artery
+  float lpa = tapCap(p,vec3( 0.14, 0.96, 0.09),vec3(-0.18, 0.94, 0.04),0.054,0.036);
+  // Right pulmonary artery
+  float rpa = tapCap(p,vec3( 0.14, 0.96, 0.09),vec3( 0.48, 0.90, 0.06),0.048,0.030);
+  // Superior vena cava
+  float svc = tapCap(p,vec3( 0.32, 0.65, 0.02),vec3( 0.34, 1.08, 0.00),0.058,0.052);
+  // Pulmonary veins entering LA
+  float ipv = tapCap(p,vec3(-0.26, 0.50,-0.08),vec3(-0.42, 0.72,-0.14),0.040,0.028);
+  float aorta = min(min(aa,ab),min(min(bc,lcc),ls));
+  float pulm  = min(min(pt,lpa),rpa);
+  return min(min(aorta,pulm),min(svc,ipv));
+}
 float sdEll(vec3 p, vec3 r) {
   float k0 = length(p/r), k1 = length(p/(r*r));
   return k0*(k0-1.0)/k1;
@@ -128,6 +154,7 @@ float hSDF(vec3 p, float b) {
   float ra = sdEll(p-vec3( 0.26, 0.43,-0.07),vec3(0.212+ex*0.3,0.198+ex*0.3,0.218+ex*0.3));
   float d  = smin(lv,rv,0.22); d=smin(d,la,0.16); d=smin(d,ra,0.14);
   d = smin(d, artD(p), 0.022);
+  d = smin(d, gvD(p), 0.042);
   return d + n3(p*5.5)*0.008 + n3(p*13.0)*0.004;
 }
 vec3 nrm(vec3 p, float b) {
@@ -153,22 +180,22 @@ void main() {
   vec3 ro=iR*ro_w, rd=iR*rd_w;
   float t=0.22; bool hit=false;
   for(int i=0;i<92;i++){if(!hit){float d=hSDF(ro+rd*t,u_beat);if(d<0.0007){hit=true;}else{if(t<5.8)t+=d;else t=5.8;}}}
-  if(!hit){float v=1.0-dot(uv*0.32,uv*0.32);gl_FragColor=vec4(vec3(0.016,0.032,0.016)*max(v,0.0),1.0);return;}
+  if(!hit){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.018,0.060,0.130)*max(v,0.0)+vec3(0.006,0.022,0.058),1.0);return;}
   vec3 pos=ro+rd*t, N=nrm(pos,u_beat), Nw=R*N, Vw=-rd_w;
   float occ=ao(pos,N,u_beat);
-  vec3 skin; if(u_rhythm==1)skin=vec3(0.28,0.04,0.05); else if(u_rhythm==2)skin=vec3(0.58,0.05,0.04); else skin=vec3(0.70,0.082,0.052);
+  vec3 skin; if(u_rhythm==1)skin=vec3(0.32,0.06,0.07); else if(u_rhythm==2)skin=vec3(0.72,0.09,0.05); else skin=vec3(0.86,0.17,0.08);
   float thick=0.0; vec3 pi=pos; for(int j=0;j<8;j++){pi-=N*0.062;thick+=max(0.0,-hSDF(pi,u_beat));}
   float sss=clamp(thick/0.42,0.0,1.0);
   vec3 L1=normalize(vec3(1.5,2.2,2.4)),L2=normalize(vec3(-2.0,0.5,1.0)),L3=normalize(vec3(0.2,-1.5,-1.6));
   vec3 L1l=iR*L1;
   float d1=max(dot(Nw,L1),0.0),d2=max(dot(Nw,L2),0.0),d3=max(dot(Nw,L3),0.0);
   vec3 H1=normalize(L1+Vw),H2=normalize(L2+Vw);
-  float sp1=pow(max(dot(Nw,H1),0.0),56.0),sp2=pow(max(dot(Nw,H2),0.0),24.0);
+  float sp1=pow(max(dot(Nw,H1),0.0),20.0),sp2=pow(max(dot(Nw,H2),0.0),10.0);
   float sh=shd(pos+N*0.013,L1l,u_beat);
   float fr=pow(1.0-max(dot(Nw,Vw),0.0),3.5);
   float ss=pow(max(dot(rd_w,L1),0.0),5.0);
   vec3 col=skin*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+d3*0.22*vec3(0.76,0.20,0.14)+vec3(0.10,0.018,0.016)*occ);
-  col+=sp1*sh*vec3(1.0,0.93,0.90)*0.72+sp2*vec3(0.7,0.82,1.0)*0.14;
+  col+=sp1*sh*vec3(1.0,0.95,0.92)*1.30+sp2*vec3(0.72,0.84,1.0)*0.30;
   col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
   col+=fr*vec3(0.72,0.12,0.08)*0.28; col*=0.54+0.46*occ;
   col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
@@ -184,6 +211,14 @@ void main() {
   // Pulsing glow along arteries with heartbeat
   ac+=artSkin*u_beat*0.35;
   col=mix(col,ac,am*0.97);
+  // Great vessels: salmon-peach with strong wet specular glistening
+  float gm=1.0-smoothstep(0.0,0.10,gvD(pos));
+  vec3 gvCol=vec3(0.82,0.48,0.28);
+  vec3 gc=gvCol*(d1*sh*1.7*vec3(1.0,0.94,0.88)+d2*0.30*vec3(0.55,0.62,0.76)+vec3(0.16,0.10,0.07)*occ);
+  float gvSp=pow(max(dot(Nw,H1),0.0),14.0)*sh;
+  gc+=vec3(1.0,0.96,0.90)*gvSp*2.4;
+  gc+=gvCol*u_beat*0.20;
+  col=mix(col,gc,gm*0.98);
   col=col/(col+1.0); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
   gl_FragColor=vec4(col,1.0);
 }`;
@@ -252,13 +287,113 @@ function draw2D(
   const isVT = rhythmType === "VT";
 
   let c0: string, c1: string, c2: string;
-  if (isVF)      { c0 = "#380808"; c1 = "#220404"; c2 = "#100202"; }
-  else if (isVT) { c0 = "#8c0b0b"; c1 = "#6a0808"; c2 = "#3c0404"; }
-  else           { c0 = "#c01212"; c1 = "#941010"; c2 = "#600a0a"; }
+  if (isVF)      { c0 = "#3a0808"; c1 = "#240404"; c2 = "#120202"; }
+  else if (isVT) { c0 = "#8c1010"; c1 = "#6a0c0c"; c2 = "#400808"; }
+  else           { c0 = "#c83a20"; c1 = "#a02818"; c2 = "#6e1610"; }
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(bs * (Math.abs(cosY) < 0.001 ? 0.001 : cosY), bs * (Math.abs(cosX) < 0.001 ? 0.001 : cosX));
+
+  // ── Layer 0: great vessels (aortic arch, pulmonary trunk, SVC, branches) ──
+  {
+    const gvAlpha = (0.90 + beat * 0.08).toFixed(3);
+    const gvBase    = `rgba(196,118,72,${gvAlpha})`;
+    const gvMid     = `rgba(176,100,58,${gvAlpha})`;
+    const gvShine   = `rgba(238,180,130,${gvAlpha})`;
+    const gvShadow  = `rgba(120,56,28,${gvAlpha})`;
+    ctx.lineCap  = "round";
+    ctx.lineJoin = "round";
+    const drawGV = (draw: () => void, w: number, col: string) => {
+      draw(); ctx.lineWidth = rw * w; ctx.strokeStyle = col; ctx.stroke();
+    };
+    // SVC — right side, going straight up
+    drawGV(() => { ctx.beginPath(); ctx.moveTo(rw*0.34,-rh*0.48); ctx.lineTo(rw*0.36,-rh*1.08); }, 0.110, gvMid);
+    drawGV(() => { ctx.beginPath(); ctx.moveTo(rw*0.34,-rh*0.48); ctx.lineTo(rw*0.36,-rh*1.08); }, 0.048, gvShine);
+    // Ascending aorta — rises from left of top notch, curving slightly left
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.04,-rh*0.52);
+      ctx.bezierCurveTo(-rw*0.06,-rh*0.72,-rw*0.08,-rh*0.88,-rw*0.06,-rh*1.02);
+    }, 0.180, gvMid);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.04,-rh*0.52);
+      ctx.bezierCurveTo(-rw*0.06,-rh*0.72,-rw*0.08,-rh*0.88,-rw*0.06,-rh*1.02);
+    }, 0.080, gvShine);
+    // Aortic arch — sweeps from ascending aorta rightward across top
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.06,-rh*1.02);
+      ctx.bezierCurveTo(-rw*0.04,-rh*1.16, rw*0.12,-rh*1.18, rw*0.26,-rh*1.10);
+    }, 0.165, gvMid);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.06,-rh*1.02);
+      ctx.bezierCurveTo(-rw*0.04,-rh*1.16, rw*0.12,-rh*1.18, rw*0.26,-rh*1.10);
+    }, 0.070, gvShine);
+    // Brachiocephalic trunk — 1st branch off arch going up-right
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.08,-rh*1.14);
+      ctx.bezierCurveTo(rw*0.10,-rh*1.22, rw*0.14,-rh*1.30, rw*0.18,-rh*1.42);
+    }, 0.085, gvMid);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.08,-rh*1.14);
+      ctx.bezierCurveTo(rw*0.10,-rh*1.22, rw*0.14,-rh*1.30, rw*0.18,-rh*1.42);
+    }, 0.034, gvShine);
+    // Left carotid — 2nd branch off arch going up
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.02,-rh*1.16);
+      ctx.bezierCurveTo(-rw*0.06,-rh*1.24,-rw*0.10,-rh*1.32,-rw*0.14,-rh*1.42);
+    }, 0.065, gvMid);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.02,-rh*1.16);
+      ctx.bezierCurveTo(-rw*0.06,-rh*1.24,-rw*0.10,-rh*1.32,-rw*0.14,-rh*1.42);
+    }, 0.026, gvShine);
+    // Left subclavian — leftmost arch branch
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.06,-rh*1.08);
+      ctx.bezierCurveTo(-rw*0.12,-rh*1.18,-rw*0.22,-rh*1.26,-rw*0.30,-rh*1.36);
+    }, 0.062, gvMid);
+    // Pulmonary trunk — from right side of heart top, going up-left
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.20,-rh*0.48);
+      ctx.bezierCurveTo(rw*0.18,-rh*0.68, rw*0.12,-rh*0.88, rw*0.08,-rh*1.02);
+    }, 0.145, gvBase);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.20,-rh*0.48);
+      ctx.bezierCurveTo(rw*0.18,-rh*0.68, rw*0.12,-rh*0.88, rw*0.08,-rh*1.02);
+    }, 0.060, gvShine);
+    // Left pulmonary artery — branches left
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.08,-rh*1.02);
+      ctx.bezierCurveTo(-rw*0.04,-rh*1.04,-rw*0.16,-rh*1.04,-rw*0.24,-rh*1.00);
+    }, 0.105, gvBase);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.08,-rh*1.02);
+      ctx.bezierCurveTo(-rw*0.04,-rh*1.04,-rw*0.16,-rh*1.04,-rw*0.24,-rh*1.00);
+    }, 0.042, gvShine);
+    // Right pulmonary artery — branches right
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.08,-rh*1.02);
+      ctx.bezierCurveTo(rw*0.20,-rh*1.04, rw*0.36,-rh*1.04, rw*0.46,-rh*0.98);
+    }, 0.096, gvBase);
+    drawGV(() => {
+      ctx.beginPath();
+      ctx.moveTo(rw*0.08,-rh*1.02);
+      ctx.bezierCurveTo(rw*0.20,-rh*1.04, rw*0.36,-rh*1.04, rw*0.46,-rh*0.98);
+    }, 0.038, gvShine);
+  }
 
   // ── Layer 1: base fill (deep radial gradient) ─────────────────────────────
   const g1 = ctx.createRadialGradient(-rw*0.18, -rh*0.12, rh*0.08, -rw*0.18, -rh*0.12, rh*1.15);
