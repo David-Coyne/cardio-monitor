@@ -1,6 +1,7 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type RhythmType = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF' | 'PVC' | 'TRI';
+export type RhythmType    = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF' | 'PVC' | 'TRI';
+export type IschaemiaZone = 'none' | 'anterior' | 'inferior' | 'lateral';
 
 export interface WaveformData {
   ecgData:    number[];
@@ -119,6 +120,28 @@ function abpSampleWeak(bp: number, sys: number, dia: number): number {
   return v;
 }
 
+// ── Ischaemia ECG modifier ─────────────────────────────────────────────────────
+// Returns extra ECG signal to add for a coronary territory (Lead II perspective).
+// Inferior (RCA) → marked ST elevation + tall T in II.
+// Anterior (LAD) → moderate ST elevation + hyperacute T + deeper Q in II.
+// Lateral (LCx)  → reciprocal ST depression + T-wave inversion in II.
+function ischaemiaECG(bp: number, zone: IschaemiaZone, amp: number): number {
+  if (zone === 'none') return 0;
+  const st = gaussian(bp, 0.41, 0.060, 1.0);   // broad ST-segment region
+  if (zone === 'inferior') {
+    return 0.32 * st                              // ST elevation ~3 mm
+      + gaussian(bp, 0.55, 0.048,  0.22 * amp);  // tall hyperacute T
+  }
+  if (zone === 'anterior') {
+    return 0.22 * st                              // ST elevation ~2 mm
+      + gaussian(bp, 0.55, 0.046,  0.16 * amp)   // hyperacute T addition
+      + gaussian(bp, 0.225, 0.013, -0.12 * amp); // deeper Q (septal involvement)
+  }
+  // lateral: reciprocal ST depression + T-wave inversion
+  return -0.18 * st
+    - gaussian(bp, 0.52, 0.044, 0.44 * amp);    // cancel normal T → inverted
+}
+
 // ── Sinus family (SR, ST, SB) ─────────────────────────────────────────────────
 
 function generateSinus(
@@ -126,6 +149,7 @@ function generateSinus(
   baseSys: number,
   baseDia: number,
   baseCO: number,
+  ischaemia: IschaemiaZone = 'none',
 ): WaveformData {
   const bs        = 3600 / hr;
   const totalBeats = Math.ceil(SAMPLES / bs) + 2;
@@ -167,6 +191,7 @@ function generateSinus(
     e += gaussian(bp, 0.305, 0.007, -0.32 * amp);
     e += gaussian(bp, 0.52,  0.045,  0.28 * amp);
     e += gaussian(bp, 0.68,  0.022,  0.04);
+    e += ischaemiaECG(bp, ischaemia, amp);
     ecg[i] = e;
 
     const sys = beatSys[bi];
@@ -187,7 +212,7 @@ function generateSinus(
 
 // ── Atrial Fibrillation ───────────────────────────────────────────────────────
 
-function generateAF(hr: number): WaveformData {
+function generateAF(hr: number, ischaemia: IschaemiaZone = 'none'): WaveformData {
   const meanBS = 3600 / hr;
 
   // Pre-generate irregular beat start positions
@@ -254,6 +279,7 @@ function generateAF(hr: number): WaveformData {
     e += gaussian(bp, 0.275, 0.009,  0.95 * amp);
     e += gaussian(bp, 0.292, 0.006, -0.22 * amp);
     e += gaussian(bp, 0.50,  0.042,  0.20 * amp);
+    e += ischaemiaECG(bp, ischaemia, amp);
     ecg[i] = e;
 
     const sys = beatSys[bi];
@@ -275,7 +301,7 @@ function generateAF(hr: number): WaveformData {
 
 // ── SVT ───────────────────────────────────────────────────────────────────────
 
-function generateSVT(hr: number): WaveformData {
+function generateSVT(hr: number, ischaemia: IschaemiaZone = 'none'): WaveformData {
   const bs         = 3600 / hr;
   const totalBeats = Math.ceil(SAMPLES / bs) + 2;
   const beatSys    = new Float32Array(totalBeats).fill(100).map((v, b) => v + 3 * (pr(b + 7) * 2 - 1));
@@ -299,6 +325,7 @@ function generateSVT(hr: number): WaveformData {
     // Retrograde P (inverted, 60-80 ms after R)
     e += gaussian(bp, 0.38,  0.018, -0.12);
     e += gaussian(bp, 0.50,  0.040,  0.18);
+    e += ischaemiaECG(bp, ischaemia, 1.0);
     ecg[i] = e;
 
     const sys = beatSys[bi];
@@ -404,7 +431,7 @@ function generateVF(): WaveformData {
 
 // ── Premature Ventricular Contraction (bigeminy) ──────────────────────────────
 
-function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: number): WaveformData {
+function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: number, ischaemia: IschaemiaZone = 'none'): WaveformData {
   const baseBS      = 3600 / hr;   // sinus cycle in samples (60 samples/s)
   const coupling    = 0.72;        // PVC fires at 72 % of sinus cycle
   const compensatory = 2.0 - coupling; // = 1.28 × sinus cycle
@@ -481,6 +508,7 @@ function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: numbe
       e += gaussian(bp, 0.305, 0.007, -0.32);  // S
       e += gaussian(bp, 0.52,  0.045,  0.28);  // T
       e += gaussian(bp, 0.68,  0.022,  0.04);  // U
+      e += ischaemiaECG(bp, ischaemia, 1.0);   // ischaemia (sinus beats only)
     }
     ecg[i] = e;
 
@@ -510,7 +538,7 @@ function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: numbe
 
 // ── Premature Ventricular Contraction (trigeminy: N–N–PVC) ───────────────────
 
-function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO: number): WaveformData {
+function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO: number, ischaemia: IschaemiaZone = 'none'): WaveformData {
   const baseBS      = 3600 / hr;
   const coupling    = 0.72;              // PVC fires at 72 % of sinus cycle from preceding beat
   const compensatory = 2.0 - coupling;  // = 1.28 × sinus cycle (same as bigeminy)
@@ -591,6 +619,7 @@ function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO:
       e += gaussian(bp, 0.305, 0.007, -0.32);
       e += gaussian(bp, 0.52,  0.045,  0.28);
       e += gaussian(bp, 0.68,  0.022,  0.04);
+      e += ischaemiaECG(bp, ischaemia, 1.0);
     }
     ecg[i] = e;
 
@@ -619,16 +648,16 @@ function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO:
 
 // ── Public dispatcher ─────────────────────────────────────────────────────────
 
-export function generateWaveforms(hr: number, rhythm: RhythmType): WaveformData {
+export function generateWaveforms(hr: number, rhythm: RhythmType, ischaemia: IschaemiaZone = 'none'): WaveformData {
   switch (rhythm) {
-    case 'SR':  return generateSinus(hr, 120, 80, 5.2);
-    case 'ST':  return generateSinus(hr, 110, 72, 4.8);
-    case 'SB':  return generateSinus(hr, 125, 82, 4.8);
-    case 'AF':  return generateAF(hr);
-    case 'SVT': return generateSVT(hr);
+    case 'SR':  return generateSinus(hr, 120, 80, 5.2, ischaemia);
+    case 'ST':  return generateSinus(hr, 110, 72, 4.8, ischaemia);
+    case 'SB':  return generateSinus(hr, 125, 82, 4.8, ischaemia);
+    case 'AF':  return generateAF(hr, ischaemia);
+    case 'SVT': return generateSVT(hr, ischaemia);
     case 'VT':  return generateVT(hr);
     case 'VF':  return generateVF();
-    case 'PVC': return generatePVC(hr, 120, 80, 5.0);
-    case 'TRI': return generateTrigeminy(hr, 120, 80, 5.0);
+    case 'PVC': return generatePVC(hr, 120, 80, 5.0, ischaemia);
+    case 'TRI': return generateTrigeminy(hr, 120, 80, 5.0, ischaemia);
   }
 }

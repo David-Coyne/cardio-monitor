@@ -10,15 +10,16 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import type { RhythmType } from "@/lib/rhythmGenerators";
+import type { RhythmType, IschaemiaZone } from "@/lib/rhythmGenerators";
 
 interface Heart3DProps {
-  heartRate:     number;
-  rhythmType:    RhythmType;
-  svgWidth?:     number;
-  svgHeight?:    number;
-  paused?:       boolean;
-  crossSection?: boolean;
+  heartRate:      number;
+  rhythmType:     RhythmType;
+  svgWidth?:      number;
+  svgHeight?:     number;
+  paused?:        boolean;
+  crossSection?:  boolean;
+  ischaemiaZone?: IschaemiaZone;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ uniform float u_yRot;
 uniform float u_time;
 uniform int   u_rhythm;
 uniform float u_cross;
+uniform int   u_isch;
 
 mat3 rotX(float a) {
   float c = cos(a), s = sin(a);
@@ -175,6 +177,29 @@ float shd(vec3 ro, vec3 rd, float b) {
   for(int i=0;i<14;i++){if(!done){float h=hSDF(ro+rd*t,b); if(h<0.001){res=0.0;done=true;}else{res=min(res,7.0*h/t);t+=clamp(h,0.012,0.18);if(t>2.6)done=true;}}}
   return clamp(res,0.0,1.0);
 }
+// ── Ischaemia zone intensity [0,1] at a surface point ───────────────────────
+// u_isch: 0=none, 1=anterior(LAD), 2=inferior(RCA), 3=lateral(LCx)
+float ischaemiaF(vec3 p){
+  if(u_isch==0) return 0.0;
+  vec3 lvc=vec3(-0.08,-0.10,0.02);
+  vec3 rv=p-lvc;
+  float f=0.0;
+  if(u_isch==1){
+    // LAD territory: anterior wall (high z), apex (low y), septum (high x relative to LV)
+    float ant=smoothstep(0.0,0.28,rv.z);
+    float apx=smoothstep(-0.20,-0.62,rv.y);
+    float spt=smoothstep(0.16,0.42,rv.x)*smoothstep(0.05,-0.30,rv.y);
+    f=max(max(ant,apx),spt);
+  } else if(u_isch==2){
+    // RCA territory: inferior wall (low y) + right-posterior
+    f=smoothstep(-0.16,-0.60,rv.y);
+  } else {
+    // LCx territory: lateral free wall (low x)
+    f=smoothstep(-0.20,-0.56,rv.x);
+  }
+  return clamp(f,0.0,1.0);
+}
+
 // ── Full anatomical chamber colour for the 3-D cut face ─────────────────────
 vec3 chamberCol(vec3 p, float b) {
   float ex = b * 0.044;
@@ -293,6 +318,9 @@ vec3 chamberCol(vec3 p, float b) {
   col=mix(col,chordCol,chordF*0.85);
   col=mix(col,valveCol,valveF);
   col=mix(col,endoCol*1.5,foF*0.55);
+  // Ischaemia: pale cyanotic discoloration on cut face
+  float ischFc=ischaemiaF(p);
+  col=mix(col,col*vec3(0.50,0.44,0.48),ischFc*0.62);
   return col;
 }
 void main() {
@@ -351,6 +379,7 @@ void main() {
       float artSp2=pow(max(dot(Nw,H1),0.0),28.0)*sh;
       ac2+=vec3(1.0,0.96,0.88)*artSp2*1.2;ac2+=artSkin2*u_beat*0.35;
       col=mix(col,ac2,am2*0.97);
+      float ischP=ischaemiaF(posc);col=mix(col,col*vec3(0.50,0.44,0.48),ischP*0.62);
       col=col/(col+1.0);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
       gl_FragColor=vec4(col,1.0);
     }
@@ -394,6 +423,7 @@ void main() {
   gc+=vec3(1.0,0.96,0.90)*gvSp*2.4;
   gc+=gvCol*u_beat*0.20;
   col=mix(col,gc,gm*0.98);
+  float ischN=ischaemiaF(pos);col=mix(col,col*vec3(0.50,0.44,0.48),ischN*0.65);
   col=col/(col+1.0); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
   gl_FragColor=vec4(col,1.0);
 }`;
@@ -831,6 +861,13 @@ function pickArtery(
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
+function ischaemiaToInt(z: IschaemiaZone): number {
+  if (z === 'anterior') return 1;
+  if (z === 'inferior') return 2;
+  if (z === 'lateral')  return 3;
+  return 0;
+}
+
 export function Heart3D({
   heartRate,
   rhythmType,
@@ -838,6 +875,7 @@ export function Heart3D({
   svgHeight,
   paused = false,
   crossSection = false,
+  ischaemiaZone = 'none',
 }: Heart3DProps) {
   const w = svgWidth  ?? 158;
   const h = svgHeight ?? 178;
@@ -851,14 +889,16 @@ export function Heart3D({
   const [hoverArt, setHoverArt] = useState<{ art: ArteryDef; cx: number; cy: number } | null>(null);
   const pausedRef   = useRef(paused);
   const crossRef    = useRef(crossSection);
+  const ischaemRef  = useRef(ischaemiaZone);
   const hrRef       = useRef(heartRate);
   const rhythmRef   = useRef(rhythmType);
   const wRef        = useRef(w);
   const hRef        = useRef(h);
   const rafRef      = useRef<number | null>(null);
 
-  useEffect(() => { pausedRef.current  = paused;        }, [paused]);
-  useEffect(() => { crossRef.current   = crossSection;  }, [crossSection]);
+  useEffect(() => { pausedRef.current  = paused;         }, [paused]);
+  useEffect(() => { crossRef.current   = crossSection;   }, [crossSection]);
+  useEffect(() => { ischaemRef.current = ischaemiaZone;  }, [ischaemiaZone]);
   useEffect(() => { hrRef.current      = heartRate;     }, [heartRate]);
   useEffect(() => { rhythmRef.current  = rhythmType;    }, [rhythmType]);
   useEffect(() => { wRef.current      = w;          }, [w]);
@@ -908,6 +948,7 @@ export function Heart3D({
       const uRhythm = gl.getUniformLocation(prog, "u_rhythm")!;
       const uRes    = gl.getUniformLocation(prog, "u_res")!;
       const uCross  = gl.getUniformLocation(prog, "u_cross")!;
+      const uIsch   = gl.getUniformLocation(prog, "u_isch")!;
 
       const setSize = (pw: number, ph: number) => {
         const cw = Math.max(1, Math.round(pw * dpr));
@@ -932,6 +973,7 @@ export function Heart3D({
         gl.uniform1f(uTime, now / 1000);
         gl.uniform1i(uRhythm, rhythm);
         gl.uniform1f(uCross,  crossRef.current ? 1.0 : 0.0);
+        gl.uniform1i(uIsch,   ischaemiaToInt(ischaemRef.current));
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         rafRef.current = requestAnimationFrame(render);
       };

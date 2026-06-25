@@ -3,6 +3,7 @@ import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { Heart3D } from "@/components/Heart3D";
 import {
   type RhythmType,
+  type IschaemiaZone,
   RHYTHM_CONFIGS,
   generateWaveforms,
 } from "@/lib/rhythmGenerators";
@@ -48,6 +49,7 @@ export default function Monitor() {
   const [hrDraft, setHrDraft] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [crossSection, setCrossSection] = useState(false);
+  const [ischaemiaZone, setIschaemiaZone] = useState<IschaemiaZone>('none');
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -67,7 +69,7 @@ export default function Monitor() {
 
   // Regenerate waveform buffer when HR or rhythm changes
   const { ecgData, abpData, coData, beatSamples, beatSysArr, beatDiaArr, beatCOArr, beatLensArr, beatTypeArr, beatStartsArr } =
-    useMemo(() => generateWaveforms(hr, rhythmType), [hr, rhythmType]);
+    useMemo(() => generateWaveforms(hr, rhythmType, ischaemiaZone), [hr, rhythmType, ischaemiaZone]);
 
   // Live readout state — updated once per beat
   const [liveBP, setLiveBP] = useState({
@@ -357,7 +359,7 @@ export default function Monitor() {
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
             <div data-testid="heart-panel" style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
-              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} crossSection={crossSection} />
+              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} crossSection={crossSection} ischaemiaZone={ischaemiaZone} />
               <button
                 onClick={() => setCrossSection(v => !v)}
                 title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
@@ -403,6 +405,26 @@ export default function Monitor() {
                 })}
               </div>
               {soundBtn}
+              {/* Ischaemia zone selector */}
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: "clamp(0.36rem, 0.6vw, 0.56rem)", color: "rgba(255,200,60,0.55)", letterSpacing: "0.08em", fontWeight: "bold", marginBottom: 2 }}>ISCHAEMIA</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 2 }}>
+                  {(['none','anterior','inferior','lateral'] as IschaemiaZone[]).map(z => {
+                    const active = ischaemiaZone === z;
+                    const label  = z === 'none' ? 'NONE' : z === 'anterior' ? 'LAD' : z === 'inferior' ? 'RCA' : 'LCx';
+                    return (
+                      <button key={z} onClick={() => setIschaemiaZone(z)} style={{
+                        fontSize: "clamp(0.38rem, 0.65vw, 0.6rem)", fontWeight: "bold", padding: "2px 0",
+                        borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
+                        color:      active ? "rgba(255,200,60,0.95)" : "rgba(255,200,60,0.38)",
+                        background: active ? "rgba(255,180,0,0.12)"  : "transparent",
+                        border:     `1px solid ${active ? "rgba(255,200,60,0.55)" : "rgba(80,80,80,0.2)"}`,
+                        boxShadow:  active ? "0 0 5px rgba(255,180,0,0.25)" : "none",
+                      }}>{label}</button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -605,7 +627,7 @@ export default function Monitor() {
           style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}`, position: "relative" }}
           data-testid="heart-panel"
         >
-          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} crossSection={crossSection} />
+          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} crossSection={crossSection} ischaemiaZone={ischaemiaZone} />
           <button
             onClick={() => setCrossSection(v => !v)}
             title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
@@ -622,6 +644,27 @@ export default function Monitor() {
           </button>
         </div>
 
+      </div>
+
+      {/* ── Ischaemia zone selector ──────────────────────────────────────────── */}
+      <div className="px-3 pb-0.5" style={{ flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 7, color: "rgba(255,200,60,0.55)", letterSpacing: "0.08em", fontWeight: "bold", whiteSpace: "nowrap" }}>ISCHAEMIA</span>
+          {(['none','anterior','inferior','lateral'] as IschaemiaZone[]).map(z => {
+            const active = ischaemiaZone === z;
+            const label  = z === 'none' ? 'NONE' : z === 'anterior' ? 'LAD' : z === 'inferior' ? 'RCA' : 'LCx';
+            return (
+              <button key={z} onClick={() => setIschaemiaZone(z)} style={{
+                flex: 1, fontSize: 7, fontWeight: "bold", padding: "2px 0",
+                borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
+                color:      active ? "rgba(255,200,60,0.95)" : "rgba(255,200,60,0.38)",
+                background: active ? "rgba(255,180,0,0.12)"  : "transparent",
+                border:     `1px solid ${active ? "rgba(255,200,60,0.55)" : "rgba(80,80,80,0.2)"}`,
+                boxShadow:  active ? "0 0 5px rgba(255,180,0,0.20)" : "none",
+              }}>{label}</button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Waveform panels ─────────────────────────────────────────────────── */}
