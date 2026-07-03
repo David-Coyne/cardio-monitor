@@ -1,14 +1,20 @@
-import { useMemo } from "react";
-import { generate12LeadSnapshot, type IschaemiaZone } from "@/lib/rhythmGenerators";
+import { useEffect, useMemo, useRef } from "react";
+import {
+  generate12LeadSnapshot,
+  getLeadIschaemiaMagnitude,
+  type IschaemiaZone,
+  type Lead12Name,
+} from "@/lib/rhythmGenerators";
 
 interface Lead12ECGProps {
   hr: number;
   ischaemiaZone: IschaemiaZone;
   color?: string;
+  paused?: boolean;
 }
 
 // Standard clinical 12-lead printout layout: 3 rows × 4 columns.
-const LEAD_GRID: string[] = [
+const LEAD_GRID: Lead12Name[] = [
   "I", "aVR", "V1", "V4",
   "II", "aVL", "V2", "V5",
   "III", "aVF", "V3", "V6",
@@ -20,8 +26,112 @@ const ZONE_LABEL: Record<Exclude<IschaemiaZone, "none">, string> = {
   lateral:  "LATERAL STEMI · LCx",
 };
 
-export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41" }: Lead12ECGProps) {
+// Matches the main ECG II strip's loop scheme in WaveformCanvas.
+const TOTAL_DURATION = 15000; // ms — full buffer loop
+const WINDOW_SECONDS  = 3.4;  // visible seconds per lead cell
+
+const MIN_Y = -1.6;
+const MAX_Y = 1.6;
+
+export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false }: Lead12ECGProps) {
   const leads = useMemo(() => generate12LeadSnapshot(hr, ischaemiaZone), [hr, ischaemiaZone]);
+  const canvasRefs  = useRef<Partial<Record<Lead12Name, HTMLCanvasElement | null>>>({});
+  const pausedRef   = useRef(paused);
+  const frozenAtRef = useRef<number | null>(null);
+
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+
+  useEffect(() => {
+    let animationFrameId: number;
+
+    const resizeAll = () => {
+      const dpr = window.devicePixelRatio || 1;
+      for (const name of LEAD_GRID) {
+        const canvas = canvasRefs.current[name];
+        if (!canvas) continue;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          canvas.width  = Math.round(rect.width * dpr);
+          canvas.height = Math.round(rect.height * dpr);
+        }
+      }
+    };
+    resizeAll();
+    window.addEventListener("resize", resizeAll);
+
+    const render = (time: number) => {
+      let elapsed: number;
+      if (pausedRef.current) {
+        if (frozenAtRef.current === null) frozenAtRef.current = time % TOTAL_DURATION;
+        elapsed = frozenAtRef.current;
+      } else {
+        frozenAtRef.current = null;
+        elapsed = time % TOTAL_DURATION;
+      }
+      const progress = elapsed / TOTAL_DURATION;
+
+      for (const name of LEAD_GRID) {
+        const canvas = canvasRefs.current[name];
+        const data   = leads[name];
+        if (!canvas || !data || data.length === 0) continue;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+
+        const width  = canvas.width;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
+
+        const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
+        const currentSampleIndex = Math.floor(progress * data.length);
+        const sweepX = Math.floor(width / 2);
+
+        const sampleAt = (x: number) => {
+          const offset = Math.floor(((sweepX - x + width) % width) / width * samplesOnScreen);
+          const idx    = (currentSampleIndex - offset + data.length) % data.length;
+          const val    = data[idx];
+          const norm   = (val - MIN_Y) / (MAX_Y - MIN_Y);
+          return height - norm * height * 0.8 - height * 0.1;
+        };
+
+        const magnitude   = getLeadIschaemiaMagnitude(ischaemiaZone, name);
+        const strokeColor = magnitude > 0.05 ? "#ffb347" : magnitude < -0.05 ? "#ff5f5f" : color;
+
+        const drawSegment = (x0: number, x1: number, alpha: number, lw: number) => {
+          ctx.save();
+          ctx.strokeStyle = strokeColor;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth   = lw;
+          ctx.lineJoin    = "round";
+          ctx.lineCap     = "round";
+          ctx.beginPath();
+          for (let x = x0; x < sweepX; x++) {
+            const y = sampleAt(x);
+            if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+          ctx.beginPath();
+          for (let x = sweepX; x < x1; x++) {
+            const y = sampleAt(x);
+            if (x === sweepX) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+          ctx.restore();
+        };
+
+        drawSegment(0, width, 0.18, 3);
+        drawSegment(0, width, 1.0, 1.1);
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    animationFrameId = requestAnimationFrame(render);
+
+    return () => {
+      window.removeEventListener("resize", resizeAll);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [leads, ischaemiaZone, color]);
 
   return (
     <div
@@ -50,48 +160,24 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41" }: Lead12ECGPro
         style={{ gridTemplateColumns: "repeat(4, 1fr)", gridTemplateRows: "repeat(3, 1fr)", minHeight: 0 }}
       >
         {LEAD_GRID.map((name) => (
-          <LeadCell key={name} name={name} data={leads[name as keyof typeof leads]} color={color} />
+          <div
+            key={name}
+            className="relative"
+            style={{ border: "1px solid rgba(0,60,0,0.35)", background: "rgba(0,10,0,0.4)" }}
+          >
+            <span
+              className="absolute top-0 left-0.5 z-10 font-mono font-bold"
+              style={{ color, fontSize: 6, lineHeight: 1.2 }}
+            >
+              {name}
+            </span>
+            <canvas
+              ref={(el) => { canvasRefs.current[name] = el; }}
+              className="w-full h-full block"
+            />
+          </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function LeadCell({ name, data, color }: { name: string; data: number[]; color: string }) {
-  const w = 100, h = 40;
-  const min = -2.0, max = 2.0;
-  const points = useMemo(() => {
-    return data
-      .map((v, i) => {
-        const x = (i / (data.length - 1)) * w;
-        const y = h - ((v - min) / (max - min)) * h;
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .join(" ");
-  }, [data]);
-
-  return (
-    <div
-      className="relative"
-      style={{ border: "1px solid rgba(0,60,0,0.35)", background: "rgba(0,10,0,0.4)" }}
-    >
-      <span
-        className="absolute top-0 left-0.5 z-10 font-mono font-bold"
-        style={{ color, fontSize: 6, lineHeight: 1.2 }}
-      >
-        {name}
-      </span>
-      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-full block">
-        <polyline
-          points={points}
-          fill="none"
-          stroke={color}
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-      </svg>
     </div>
   );
 }

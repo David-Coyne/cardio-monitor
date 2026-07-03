@@ -171,18 +171,21 @@ function leadIschaemiaBump(bp: number, magnitude: number): number {
   return magnitude * (0.32 * st + 0.22 * t);
 }
 
+// Produces continuous, looping per-lead buffers (same SAMPLES/15s-loop scheme
+// as the main ECG II strip in generateSinus) so the grid can sweep-scroll
+// live just like the rest of the monitor, instead of a frozen printout.
 export function generate12LeadSnapshot(hr: number, ischaemia: IschaemiaZone): Record<Lead12Name, number[]> {
   const bs    = 3600 / hr;               // samples per beat @ 60 samples/s
-  const n     = Math.max(60, Math.round(bs * 3));
   const leads = Object.keys(LEAD12_QRS_SCALE) as Lead12Name[];
   const out   = {} as Record<Lead12Name, number[]>;
-  for (const lead of leads) out[lead] = new Array(n);
+  for (const lead of leads) out[lead] = new Array(SAMPLES);
 
   const factorMap = ischaemia === 'none' ? null : ISCHAEMIA_LEAD_FACTOR[ischaemia];
 
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < SAMPLES; i++) {
     const bp     = (i % bs) / bs;
-    const wander = 0.02 * Math.sin((i / n) * 0.6 * 2 * Math.PI);
+    const rp     = (i / SAMPLES) * RESP_CYCLES * 2 * Math.PI;
+    const wander = 0.02 * Math.sin(rp);
 
     let base = wander;
     base += gaussian(bp, 0.13,  0.018,  0.18);
@@ -199,6 +202,14 @@ export function generate12LeadSnapshot(hr: number, ischaemia: IschaemiaZone): Re
     }
   }
   return out;
+}
+
+// Signed magnitude of ST-change for a given lead/territory (0 = unaffected,
+// positive = elevation, negative = reciprocal depression). Used by the UI to
+// highlight which leads are showing classical changes.
+export function getLeadIschaemiaMagnitude(zone: IschaemiaZone, lead: Lead12Name): number {
+  if (zone === 'none') return 0;
+  return ISCHAEMIA_LEAD_FACTOR[zone][lead] ?? 0;
 }
 
 // ── Sinus family (SR, ST, SB) ─────────────────────────────────────────────────

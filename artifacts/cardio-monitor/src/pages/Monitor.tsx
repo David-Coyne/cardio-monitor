@@ -436,7 +436,7 @@ export default function Monitor() {
                 {ischaemiaZone === 'none' ? (
                   <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
                 ) : (
-                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} />
+                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} />
                 )}
                 {pauseBtn}
               </div>
@@ -688,7 +688,7 @@ export default function Monitor() {
               paused={paused}
             />
           ) : (
-            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} />
+            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} />
           )}
           {pauseBtn}
         </div>
