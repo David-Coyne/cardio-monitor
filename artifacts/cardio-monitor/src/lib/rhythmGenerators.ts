@@ -2,6 +2,7 @@
 
 export type RhythmType    = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF' | 'PVC' | 'TRI';
 export type IschaemiaZone = 'none' | 'anterior' | 'inferior' | 'lateral';
+export type Lead12Name    = 'I' | 'II' | 'III' | 'aVR' | 'aVL' | 'aVF' | 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6';
 
 export interface WaveformData {
   ecgData:    number[];
@@ -140,6 +141,64 @@ function ischaemiaECG(bp: number, zone: IschaemiaZone, amp: number): number {
   // lateral: reciprocal ST depression + T-wave inversion
   return -0.18 * st
     - gaussian(bp, 0.52, 0.044, 0.44 * amp);    // cancel normal T → inverted
+}
+
+// ── 12-lead ECG snapshot ─────────────────────────────────────────────────────
+// A stylised static 12-lead "printout" driven off the standard limb/precordial
+// lead axes. Used to show classical territorial ST-change patterns once an
+// ischaemia zone is selected (real 12-leads are captured as a point-in-time
+// snapshot, so this is intentionally independent of the live monitored strip).
+
+// Relative QRS (and P/T) amplitude + polarity per lead vs. the reference
+// (lead II) complex — approximates the frontal/horizontal-plane lead vectors.
+const LEAD12_QRS_SCALE: Record<Lead12Name, number> = {
+  I: 0.65, II: 1.00, III: 0.45, aVR: -0.75, aVL: 0.30, aVF: 0.80,
+  V1: -0.30, V2: 0.35, V3: 0.70, V4: 1.05, V5: 0.95, V6: 0.75,
+};
+
+// Per-territory ST/T change per lead: positive = elevation + hyperacute T,
+// negative = reciprocal depression + T-wave inversion. Magnitude ~0-1.
+const ISCHAEMIA_LEAD_FACTOR: Record<Exclude<IschaemiaZone, 'none'>, Partial<Record<Lead12Name, number>>> = {
+  anterior: { V1: 0.55, V2: 1.00, V3: 1.00, V4: 0.85, V5: 0.30, I: 0.15, aVL: 0.15, II: -0.30, III: -0.40, aVF: -0.35 },
+  inferior: { II: 1.00, III: 1.00, aVF: 0.90, I: -0.35, aVL: -0.45, V1: -0.15, V2: -0.15 },
+  lateral:  { I: 0.70, aVL: 0.80, V4: 0.30, V5: 0.90, V6: 0.80, II: -0.20, III: -0.30, aVF: -0.25 },
+};
+
+function leadIschaemiaBump(bp: number, magnitude: number): number {
+  if (!magnitude) return 0;
+  const st = gaussian(bp, 0.41, 0.060, 1.0);
+  const t  = gaussian(bp, 0.54, 0.047, 1.0);
+  return magnitude * (0.32 * st + 0.22 * t);
+}
+
+export function generate12LeadSnapshot(hr: number, ischaemia: IschaemiaZone): Record<Lead12Name, number[]> {
+  const bs    = 3600 / hr;               // samples per beat @ 60 samples/s
+  const n     = Math.max(60, Math.round(bs * 3));
+  const leads = Object.keys(LEAD12_QRS_SCALE) as Lead12Name[];
+  const out   = {} as Record<Lead12Name, number[]>;
+  for (const lead of leads) out[lead] = new Array(n);
+
+  const factorMap = ischaemia === 'none' ? null : ISCHAEMIA_LEAD_FACTOR[ischaemia];
+
+  for (let i = 0; i < n; i++) {
+    const bp     = (i % bs) / bs;
+    const wander = 0.02 * Math.sin((i / n) * 0.6 * 2 * Math.PI);
+
+    let base = wander;
+    base += gaussian(bp, 0.13,  0.018,  0.18);
+    base += gaussian(bp, 0.265, 0.006, -0.18);
+    base += gaussian(bp, 0.285, 0.009,  1.15);
+    base += gaussian(bp, 0.305, 0.007, -0.32);
+    base += gaussian(bp, 0.52,  0.045,  0.28);
+    base += gaussian(bp, 0.68,  0.022,  0.04);
+
+    for (const lead of leads) {
+      let v = base * LEAD12_QRS_SCALE[lead];
+      if (factorMap) v += leadIschaemiaBump(bp, factorMap[lead] ?? 0);
+      out[lead][i] = v;
+    }
+  }
+  return out;
 }
 
 // ── Sinus family (SR, ST, SB) ─────────────────────────────────────────────────

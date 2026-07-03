@@ -1,0 +1,1 @@
+- [Cardio monitor ECG modeling](cardio-monitor-ecg-modeling.md) — ECG traces are stylized gaussian-template synthesis, not real signal sim; keep new lead/rhythm views consistent with that approach.

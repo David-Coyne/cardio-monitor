@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { Heart3D } from "@/components/Heart3D";
+import { Lead12ECG } from "@/components/Lead12ECG";
 import {
   type RhythmType,
   type IschaemiaZone,
@@ -432,7 +433,11 @@ export default function Monitor() {
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0, justifyContent: "center" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, height: "50%", minHeight: 0 }}>
               <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-                <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
+                {ischaemiaZone === 'none' ? (
+                  <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
+                ) : (
+                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} />
+                )}
                 {pauseBtn}
               </div>
               <div style={{ flex: 1, minHeight: 0 }}>
@@ -670,17 +675,21 @@ export default function Monitor() {
       {/* ── Waveform panels ─────────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 gap-1 px-2 pb-2 pt-1 min-h-0">
         <div className="flex-1 min-h-0" style={{ position: "relative" }}>
-          <WaveformCanvas
-            data={ecgData}
-            color={isLethal ? "#ff4040" : "#00ff41"}
-            label="ECG II"
-            value={hrDisplay}
-            unit="bpm"
-            minY={rhythmCfg.ecgMinY}
-            maxY={rhythmCfg.ecgMaxY}
-            windowSeconds={6}
-            paused={paused}
-          />
+          {ischaemiaZone === 'none' ? (
+            <WaveformCanvas
+              data={ecgData}
+              color={isLethal ? "#ff4040" : "#00ff41"}
+              label="ECG II"
+              value={hrDisplay}
+              unit="bpm"
+              minY={rhythmCfg.ecgMinY}
+              maxY={rhythmCfg.ecgMaxY}
+              windowSeconds={6}
+              paused={paused}
+            />
+          ) : (
+            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} />
+          )}
           {pauseBtn}
         </div>
         <div className="flex-1 min-h-0">
