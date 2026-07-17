@@ -11,9 +11,9 @@ interface Lead12ECGProps {
   ischaemiaZone: IschaemiaZone;
   color?: string;
   paused?: boolean;
+  beatPalette?: readonly string[] | null;
 }
 
-// Standard clinical 12-lead printout layout: 3 rows × 4 columns.
 const LEAD_GRID: Lead12Name[] = [
   "I", "aVR", "V1", "V4",
   "II", "aVL", "V2", "V5",
@@ -26,22 +26,28 @@ const ZONE_LABEL: Record<Exclude<IschaemiaZone, "none">, string> = {
   lateral:  "LATERAL STEMI · LCx",
 };
 
-// Matches the main ECG II strip's loop scheme in WaveformCanvas.
-const TOTAL_DURATION = 15000; // ms — full buffer loop
-const WINDOW_SECONDS  = 3.4;  // visible seconds per lead cell
-
+const TOTAL_DURATION = 15000;
+const WINDOW_SECONDS  = 3.4;
 const MIN_Y = -1.6;
-const MAX_Y = 1.6;
+const MAX_Y =  1.6;
 
-export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false }: Lead12ECGProps) {
+export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false, beatPalette }: Lead12ECGProps) {
   const leads = useMemo(() => generate12LeadSnapshot(hr, ischaemiaZone), [hr, ischaemiaZone]);
-  const canvasRefs  = useRef<Partial<Record<Lead12Name, HTMLCanvasElement | null>>>({});
-  const pausedRef   = useRef(paused);
-  const frozenAtRef = useRef<number | null>(null);
+  const canvasRefs       = useRef<Partial<Record<Lead12Name, HTMLCanvasElement | null>>>({});
+  const pausedRef        = useRef(paused);
+  const frozenAtRef      = useRef<number | null>(null);
+  const frozenRawTimeRef = useRef<number | null>(null);
+  const birthRawTimeRef  = useRef<number | null>(null);
+  const beatPaletteRef   = useRef<readonly string[] | null>(beatPalette ?? null);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { beatPaletteRef.current = beatPalette ?? null; }, [beatPalette]);
 
   useEffect(() => {
+    birthRawTimeRef.current  = null;
+    frozenAtRef.current      = null;
+    frozenRawTimeRef.current = null;
+
     let animationFrameId: number;
 
     const resizeAll = () => {
@@ -59,16 +65,37 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
     resizeAll();
     window.addEventListener("resize", resizeAll);
 
+    const windowMs = WINDOW_SECONDS * 1000;
+
     const render = (time: number) => {
+      // --- Separate data-loop time from sweep time (same pattern as WaveformCanvas) ---
       let elapsed: number;
+      let rawTime: number;
+
       if (pausedRef.current) {
-        if (frozenAtRef.current === null) frozenAtRef.current = time % TOTAL_DURATION;
+        if (frozenAtRef.current === null) {
+          frozenAtRef.current      = time % TOTAL_DURATION;
+          frozenRawTimeRef.current = time;
+        }
         elapsed = frozenAtRef.current;
+        rawTime = frozenRawTimeRef.current!;
       } else {
-        frozenAtRef.current = null;
-        elapsed = time % TOTAL_DURATION;
+        frozenAtRef.current      = null;
+        frozenRawTimeRef.current = null;
+        elapsed  = time % TOTAL_DURATION;
+        rawTime  = time;
       }
+
+      if (birthRawTimeRef.current === null) birthRawTimeRef.current = rawTime;
+      const birthRawTime = birthRawTimeRef.current;
+
       const progress = elapsed / TOTAL_DURATION;
+
+      // Sweep position shared across all lead cells — they all stay in sync
+      const sweepFraction     = (rawTime % windowMs) / windowMs;
+      const elapsedSinceBirth = rawTime - birthRawTime;
+      const firstPassComplete = elapsedSinceBirth >= windowMs;
+      const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceBirth / windowMs);
 
       for (const name of LEAD_GRID) {
         const canvas = canvasRefs.current[name];
@@ -83,43 +110,106 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
 
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
-        const sweepX = Math.floor(width / 2);
+        const beatSamples        = Math.round(data.length / Math.max(1, Math.round(hr * (TOTAL_DURATION / 1000) / 60)));
 
-        const sampleAt = (x: number) => {
-          const offset = Math.floor(((sweepX - x + width) % width) / width * samplesOnScreen);
+        const writeX  = Math.floor(sweepFraction * width);
+        const eraserW = Math.max(8, Math.floor(width * 0.06));
+        const unwrittenRegionSz = Math.ceil(unwrittenFraction * width);
+
+        const shouldSkip = (x: number): boolean => {
+          if (((x - writeX + width) % width) < eraserW) return true;
+          if (!firstPassComplete && ((x - writeX + width) % width) < unwrittenRegionSz) return true;
+          return false;
+        };
+
+        const sampleAt = (x: number): number => {
+          const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
           const idx    = (currentSampleIndex - offset + data.length) % data.length;
           const val    = data[idx];
           const norm   = (val - MIN_Y) / (MAX_Y - MIN_Y);
           return height - norm * height * 0.8 - height * 0.1;
         };
 
-        const magnitude   = getLeadIschaemiaMagnitude(ischaemiaZone, name);
-        const strokeColor = magnitude > 0.05 ? "#ffb347" : magnitude < -0.05 ? "#ff5f5f" : color;
+        const magnitude    = getLeadIschaemiaMagnitude(ischaemiaZone, name);
+        const hasIschaemia = Math.abs(magnitude) > 0.05;
+        const strokeColor  = hasIschaemia
+          ? (magnitude > 0.05 ? "#ffb347" : "#ff5f5f")
+          : color;
 
-        const drawSegment = (x0: number, x1: number, alpha: number, lw: number) => {
-          ctx.save();
-          ctx.strokeStyle = strokeColor;
-          ctx.globalAlpha = alpha;
-          ctx.lineWidth   = lw;
-          ctx.lineJoin    = "round";
-          ctx.lineCap     = "round";
-          ctx.beginPath();
-          for (let x = x0; x < sweepX; x++) {
-            const y = sampleAt(x);
-            if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-          ctx.beginPath();
-          for (let x = sweepX; x < x1; x++) {
-            const y = sampleAt(x);
-            if (x === sweepX) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-          ctx.restore();
-        };
+        const pal = beatPaletteRef.current;
 
-        drawSegment(0, width, 0.18, 3);
-        drawSegment(0, width, 1.0, 1.1);
+        if (pal && pal.length > 0 && !hasIschaemia) {
+          // === Per-beat colouring for normal leads ===
+          const drawBeatColoured = (alpha: number, lw: number) => {
+            let segStart  = -1;
+            let segColour = '';
+
+            const flush = (xEnd: number) => {
+              if (segStart < 0 || xEnd <= segStart) return;
+              ctx.save();
+              ctx.strokeStyle = segColour;
+              ctx.globalAlpha = alpha;
+              ctx.lineWidth   = lw;
+              ctx.lineJoin    = 'round';
+              ctx.lineCap     = 'round';
+              ctx.beginPath();
+              for (let x = segStart; x < xEnd; x++) {
+                const y = sampleAt(x);
+                if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+              }
+              ctx.stroke();
+              ctx.restore();
+              segStart  = -1;
+              segColour = '';
+            };
+
+            for (let x = 0; x < width; x++) {
+              if (shouldSkip(x)) { flush(x); continue; }
+              const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
+              const sIdx   = (currentSampleIndex - offset + data.length) % data.length;
+              const beatN  = Math.floor(sIdx / beatSamples);
+              const col    = pal[((beatN % pal.length) + pal.length) % pal.length];
+              if (col !== segColour || segStart < 0) { flush(x); segStart = x; segColour = col; }
+            }
+            flush(width);
+          };
+
+          drawBeatColoured(0.18, 3);
+          drawBeatColoured(1.0,  1.1);
+
+        } else {
+          // === Single-colour draw ===
+          const drawSingleColour = (alpha: number, lw: number) => {
+            ctx.save();
+            ctx.strokeStyle = strokeColor;
+            ctx.globalAlpha = alpha;
+            ctx.lineWidth   = lw;
+            ctx.lineJoin    = 'round';
+            ctx.lineCap     = 'round';
+            let segStart = -1;
+
+            const flush = (xEnd: number) => {
+              if (segStart < 0 || xEnd <= segStart) return;
+              ctx.beginPath();
+              for (let x = segStart; x < xEnd; x++) {
+                const y = sampleAt(x);
+                if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+              }
+              ctx.stroke();
+              segStart = -1;
+            };
+
+            for (let x = 0; x < width; x++) {
+              if (shouldSkip(x)) { flush(x); continue; }
+              if (segStart < 0) segStart = x;
+            }
+            flush(width);
+            ctx.restore();
+          };
+
+          drawSingleColour(0.18, 3);
+          drawSingleColour(1.0,  1.1);
+        }
       }
 
       animationFrameId = requestAnimationFrame(render);
@@ -131,7 +221,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
       window.removeEventListener("resize", resizeAll);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [leads, ischaemiaZone, color]);
+  }, [leads, ischaemiaZone, color, hr]);
 
   return (
     <div

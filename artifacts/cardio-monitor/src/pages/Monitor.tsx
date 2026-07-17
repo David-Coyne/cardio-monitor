@@ -10,10 +10,48 @@ import {
 } from "@/lib/rhythmGenerators";
 import { useHeartSound } from "@/hooks/useHeartSound";
 
+// ── Beat colour palette ───────────────────────────────────────────────────────
+const BEAT_PALETTE = [
+  '#00ff88', // mint
+  '#ff4da6', // hot pink
+  '#ffb300', // amber
+  '#00c8ff', // electric blue
+  '#c061ff', // violet
+  '#ff6b35', // coral
+  '#00e5b4', // teal
+  '#ff3d71', // rose
+  '#ffe033', // gold
+  '#4d9bff', // sky blue
+];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const clampHR = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, Math.round(v)));
+
+// Sinus family: auto-promote rhythm when HR crosses natural boundaries
+const SINUS_FAMILY = new Set<RhythmType>(['SR', 'ST', 'SB']);
+
+function sinusRhythmForHR(hr: number): RhythmType {
+  if (hr > 100) return 'ST';
+  if (hr >= 60)  return 'SR';
+  return 'SB';
+}
+
+// Returns the resolved {rhythm, hr} after applying an HR change with optional auto-switch
+function applyHrChange(
+  rawHr: number,
+  currentRhythm: RhythmType,
+  rhythmCfg: { hrMin: number; hrMax: number },
+  configs: typeof RHYTHM_CONFIGS,
+): { hr: number; rhythm: RhythmType } {
+  if (SINUS_FAMILY.has(currentRhythm)) {
+    const targetRhythm = sinusRhythmForHR(rawHr);
+    const targetCfg    = configs.find(c => c.type === targetRhythm)!;
+    return { hr: clampHR(rawHr, targetCfg.hrMin, targetCfg.hrMax), rhythm: targetRhythm };
+  }
+  return { hr: clampHR(rawHr, rhythmCfg.hrMin, rhythmCfg.hrMax), rhythm: currentRhythm };
+}
 
 const DESIGN_W = 390;
 const DESIGN_H = 844;
@@ -51,6 +89,9 @@ export default function Monitor() {
   const [paused, setPaused] = useState(false);
   const [crossSection, setCrossSection] = useState(false);
   const [ischaemiaZone, setIschaemiaZone] = useState<IschaemiaZone>('none');
+  const [beatColourOn, setBeatColourOn] = useState(false);
+  const [beatIndex, setBeatIndex] = useState(0);
+  const beatIndexRef = useRef(0);
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -59,6 +100,7 @@ export default function Monitor() {
   const { playS1, playS2, muted, toggleMute, unlockAudio } = useHeartSound();
 
   // Stable refs so the rAF loop always sees the latest sound functions + rhythm
+  const heartResetRef = useRef<(() => void) | null>(null);
   const playS1Ref    = useRef(playS1);
   const playS2Ref    = useRef(playS2);
   const rhythmRef    = useRef(rhythmType);
@@ -103,6 +145,14 @@ export default function Monitor() {
   // Keep liveHR in sync when rhythm or HR changes (non-AF resets)
   useEffect(() => { setLiveHR(hr); }, [hr, rhythmType]);
 
+  // Inject beat-pulse keyframe once
+  useEffect(() => {
+    const s = document.createElement('style');
+    s.innerHTML = '@keyframes beatPulse{0%{opacity:1;transform:scale(1.01)}65%{opacity:0.35}100%{opacity:0;transform:scale(1)}}';
+    document.head.appendChild(s);
+    return () => { document.head.removeChild(s); };
+  }, []);
+
   // Single rAF loop — updates readouts once per beat + triggers sounds
   useEffect(() => {
     let rafId: number;
@@ -120,7 +170,7 @@ export default function Monitor() {
       let b: number;
       let phase: number;
 
-      if ((rhythm === 'PVC' || rhythm === 'TRI') && beatStartsRef.current?.length) {
+      if (rhythm === 'PVC' && beatStartsRef.current?.length) {
         // Binary search for the beat containing `sample`
         const starts = beatStartsRef.current;
         let lo = 0, hi = starts.length - 1;
@@ -153,14 +203,18 @@ export default function Monitor() {
             setLiveHR(Math.round(3600 / lens[b]));
           }
         }
-        // S1 on every organised beat (not VF)
-        if (rhythm !== "VF") playS1Ref.current();
+        // S1 on every organised beat (not VF or PEA — PEA has no mechanical output)
+        if (rhythm !== "VF" && rhythm !== "PEA") playS1Ref.current();
+        // Beat colour: increment index on every beat regardless of toggle state
+        beatIndexRef.current = (beatIndexRef.current + 1) % BEAT_PALETTE.length;
+        setBeatIndex(beatIndexRef.current);
       }
 
       // ── Mid-beat: S2 at end of systole (~phase 0.38) ────────────────────
       // Suppress S2 on PVC beats (aortic valve barely opens in ineffective contraction)
-      const isPVCBeat = (rhythm === 'PVC' || rhythm === 'TRI') && (beatTypeRef.current?.[b] ?? false);
-      if (rhythm !== "VF" && !isPVCBeat && phase >= 0.38 && !s2Played) {
+      // Also suppress on PEA (no mechanical contraction despite ECG activity)
+      const isPVCBeat = rhythm === 'PVC' && (beatTypeRef.current?.[b] ?? false);
+      if (rhythm !== "VF" && rhythm !== "PEA" && !isPVCBeat && phase >= 0.38 && !s2Played) {
         s2Played = true;
         playS2Ref.current();
       }
@@ -188,7 +242,11 @@ export default function Monitor() {
   const commitHrDraft = () => {
     if (hrDraft !== null) {
       const n = parseInt(hrDraft, 10);
-      if (!isNaN(n)) setHr(clampHR(n, rhythmCfg.hrMin, rhythmCfg.hrMax));
+      if (!isNaN(n)) {
+        const { hr: newHr, rhythm: newRhythm } = applyHrChange(n, rhythmType, rhythmCfg, RHYTHM_CONFIGS);
+        setHr(newHr);
+        if (newRhythm !== rhythmType) setRhythmType(newRhythm);
+      }
       setHrDraft(null);
     }
   };
@@ -196,8 +254,15 @@ export default function Monitor() {
   const handleHrStep = (delta: number) => {
     unlockAudio();
     setHrDraft(null);
-    if (!isVF) setHr(h => clampHR(h + delta, rhythmCfg.hrMin, rhythmCfg.hrMax));
+    if (!isVF) {
+      const { hr: newHr, rhythm: newRhythm } = applyHrChange(hr + delta, rhythmType, rhythmCfg, RHYTHM_CONFIGS);
+      setHr(newHr);
+      if (newRhythm !== rhythmType) setRhythmType(newRhythm);
+    }
   };
+
+  // Beat colour
+  const currentBeatColour = beatColourOn ? BEAT_PALETTE[beatIndex % BEAT_PALETTE.length] : null;
 
   // Display helpers
   const hrDisplay  = isVF ? "---" : rhythmType === "AF" ? `~${liveHR}` : String(hr);
@@ -360,7 +425,10 @@ export default function Monitor() {
           {/* Left: heart + controls */}
           <div style={{ width: "34%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #0d2a0d" }}>
             <div data-testid="heart-panel" style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${isLethal ? "rgba(255,60,60,0.15)" : "transparent"}` }}>
-              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} crossSection={crossSection} ischaemiaZone={ischaemiaZone} />
+              <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} svgWidth={heartW} svgHeight={heartH} paused={paused} crossSection={crossSection} ischaemiaZone={ischaemiaZone} resetRef={heartResetRef} />
+              {currentBeatColour && (
+                <div key={`glow-${beatIndex}`} style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5, boxShadow: `0 0 44px 16px ${currentBeatColour}55, 0 0 90px 36px ${currentBeatColour}22`, animation: "beatPulse 0.70s ease-out forwards" }} />
+              )}
               <button
                 onClick={() => setCrossSection(v => !v)}
                 title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
@@ -374,6 +442,20 @@ export default function Monitor() {
                 }}
               >
                 {crossSection ? "3D" : "SECT"}
+              </button>
+              <button
+                onClick={() => heartResetRef.current?.()}
+                title="Reset heart rotation"
+                style={{
+                  position: "absolute", bottom: 4, right: 4, zIndex: 10,
+                  fontSize: 7, fontFamily: "monospace", fontWeight: "bold",
+                  letterSpacing: "0.08em", padding: "2px 4px", borderRadius: 3, cursor: "pointer",
+                  color:      "rgba(100,180,100,0.75)",
+                  background: "rgba(0,40,0,0.55)",
+                  border:     "1px solid rgba(0,180,0,0.25)",
+                }}
+              >
+                RESET
               </button>
             </div>
             <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
@@ -405,7 +487,23 @@ export default function Monitor() {
                   );
                 })}
               </div>
-              {soundBtn}
+              <div style={{ display: "flex", gap: 3, marginBottom: 3 }}>
+                {soundBtn}
+                <button
+                  onClick={() => setBeatColourOn(v => !v)}
+                  style={{
+                    flex: 1, fontSize: "clamp(0.38rem,0.65vw,0.6rem)", fontWeight: "bold", padding: "3px 0",
+                    borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
+                    color:      beatColourOn ? (currentBeatColour ?? "#00c8ff") : "rgba(100,100,100,0.6)",
+                    background: beatColourOn ? `${currentBeatColour ?? "#00c8ff"}18` : "transparent",
+                    border:     `1px solid ${beatColourOn ? (currentBeatColour ?? "#00c8ff") + "88" : "rgba(60,60,60,0.4)"}`,
+                    boxShadow:  beatColourOn ? `0 0 5px ${currentBeatColour ?? "#00c8ff"}55` : "none",
+                    transition: "all 0.3s",
+                  }}
+                >
+                  BEAT COLOUR {beatColourOn ? "ON" : "OFF"}
+                </button>
+              </div>
               {/* Ischaemia zone selector */}
               <div style={{ marginTop: 4 }}>
                 <div style={{ fontSize: "clamp(0.36rem, 0.6vw, 0.56rem)", color: "rgba(255,200,60,0.55)", letterSpacing: "0.08em", fontWeight: "bold", marginBottom: 2 }}>ISCHAEMIA</div>
@@ -431,17 +529,23 @@ export default function Monitor() {
 
           {/* Right: waveforms */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0, justifyContent: "center" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, height: "50%", minHeight: 0 }}>
-              <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, height: ischaemiaZone === 'none' ? "50%" : "88%", minHeight: 0 }}>
+              <div style={{ flex: ischaemiaZone === 'none' ? 1 : 3, minHeight: 0, position: "relative" }}>
                 {ischaemiaZone === 'none' ? (
-                  <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
+                  <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} beatColor={isLethal ? null : currentBeatColour} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
                 ) : (
-                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} />
+                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} />
                 )}
                 {pauseBtn}
               </div>
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <WaveformCanvas data={abpData} color="#ff4444" label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
+              <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+                <WaveformCanvas data={abpData} color="#ff4444" beatColor={currentBeatColour} beatPalette={beatColourOn ? BEAT_PALETTE : null} beatSamples={beatSamples} label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
+                {currentBeatColour && (
+                  <div style={{ position: "absolute", bottom: 8, left: 10, zIndex: 10, fontFamily: "monospace", lineHeight: 1.15, pointerEvents: "none" }}>
+                    <div style={{ fontSize: "clamp(0.36rem,0.55vw,0.52rem)", fontWeight: "bold", color: currentBeatColour, opacity: 0.72, letterSpacing: "0.12em" }}>CO</div>
+                    <div style={{ fontSize: "clamp(0.65rem,1.2vw,1.1rem)", fontWeight: "bold", color: currentBeatColour, textShadow: `0 0 10px ${currentBeatColour}90` }}>{coDisplay} <span style={{ fontSize: "clamp(0.4rem,0.7vw,0.65rem)", opacity: 0.75 }}>L/min</span></div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -605,21 +709,39 @@ export default function Monitor() {
           })}
         </div>
 
-        {/* Sound toggle — full width below the grid */}
-        <button
-          data-testid="button-sound-toggle"
-          onClick={() => { unlockAudio(); toggleMute(); }}
-          title={muted ? "Sound off — click to enable" : "Sound on — click to mute"}
-          className="w-full text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
-          style={{
-            lineHeight: 1.2,
-            color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
-            background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
-            border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
-          }}
-        >
-          SOUND {muted ? "OFF" : "ON"}
-        </button>
+        {/* Sound + beat-colour toggles */}
+        <div style={{ display: "flex", gap: 3, marginTop: 0 }}>
+          <button
+            data-testid="button-sound-toggle"
+            onClick={() => { unlockAudio(); toggleMute(); }}
+            title={muted ? "Sound off — click to enable" : "Sound on — click to mute"}
+            className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
+            style={{
+              flex: 1, lineHeight: 1.2,
+              color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
+              background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
+              border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
+            }}
+          >
+            SOUND {muted ? "OFF" : "ON"}
+          </button>
+          <button
+            data-testid="button-beat-colour-toggle"
+            onClick={() => setBeatColourOn(v => !v)}
+            title={beatColourOn ? "Beat colour on — click to disable" : "Beat colour off — click to enable"}
+            className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
+            style={{
+              flex: 1, lineHeight: 1.2,
+              color:      beatColourOn ? (currentBeatColour ?? "#00c8ff") : "rgba(100,100,100,0.6)",
+              background: beatColourOn ? `${currentBeatColour ?? "#00c8ff"}18` : "transparent",
+              border:     `1px solid ${beatColourOn ? (currentBeatColour ?? "#00c8ff") + "88" : "rgba(60,60,60,0.4)"}`,
+              boxShadow:  beatColourOn ? `0 0 6px ${currentBeatColour ?? "#00c8ff"}55` : "none",
+              transition: "all 0.3s",
+            }}
+          >
+            BEAT COLOUR {beatColourOn ? "ON" : "OFF"}
+          </button>
+        </div>
       </div>
 
       {/* ── Heart + Educational labels ───────────────────────────────────────── */}
@@ -632,7 +754,10 @@ export default function Monitor() {
           style={{ border: `1px solid ${isLethal ? "rgba(255,60,60,0.2)" : "#0d2a0d"}`, position: "relative" }}
           data-testid="heart-panel"
         >
-          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} crossSection={crossSection} ischaemiaZone={ischaemiaZone} />
+          <Heart3D heartRate={isVF ? 300 : hr} rhythmType={rhythmType} paused={paused} crossSection={crossSection} ischaemiaZone={ischaemiaZone} resetRef={heartResetRef} />
+          {currentBeatColour && (
+            <div key={`glow-${beatIndex}`} style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 5, boxShadow: `0 0 44px 16px ${currentBeatColour}55, 0 0 90px 36px ${currentBeatColour}22`, animation: "beatPulse 0.70s ease-out forwards" }} />
+          )}
           <button
             onClick={() => setCrossSection(v => !v)}
             title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
@@ -646,6 +771,20 @@ export default function Monitor() {
             }}
           >
             {crossSection ? "3D" : "SECT"}
+          </button>
+          <button
+            onClick={() => heartResetRef.current?.()}
+            title="Reset heart rotation"
+            style={{
+              position: "absolute", bottom: 6, right: 6, zIndex: 10,
+              fontSize: 8, fontFamily: "monospace", fontWeight: "bold",
+              letterSpacing: "0.08em", padding: "3px 6px", borderRadius: 3, cursor: "pointer",
+              color:      "rgba(100,180,100,0.75)",
+              background: "rgba(0,40,0,0.55)",
+              border:     "1px solid rgba(0,180,0,0.25)",
+            }}
+          >
+            RESET
           </button>
         </div>
 
@@ -679,6 +818,9 @@ export default function Monitor() {
             <WaveformCanvas
               data={ecgData}
               color={isLethal ? "#ff4040" : "#00ff41"}
+              beatColor={isLethal ? null : currentBeatColour}
+              beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)}
+              beatSamples={beatSamples}
               label="ECG II"
               value={hrDisplay}
               unit="bpm"
@@ -688,14 +830,17 @@ export default function Monitor() {
               paused={paused}
             />
           ) : (
-            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} />
+            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} />
           )}
           {pauseBtn}
         </div>
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0" style={{ position: "relative" }}>
           <WaveformCanvas
             data={abpData}
             color="#ff4444"
+            beatColor={currentBeatColour}
+            beatPalette={beatColourOn ? BEAT_PALETTE : null}
+            beatSamples={beatSamples}
             label="ABP"
             value={bpDisplay}
             unit={`(${mapDisplay})`}
@@ -704,6 +849,12 @@ export default function Monitor() {
             windowSeconds={6}
             paused={paused}
           />
+          {currentBeatColour && (
+            <div style={{ position: "absolute", bottom: 8, left: 8, zIndex: 10, fontFamily: "monospace", lineHeight: 1.15, pointerEvents: "none" }}>
+              <div style={{ fontSize: 6, fontWeight: "bold", color: currentBeatColour, opacity: 0.72, letterSpacing: "0.12em" }}>CO</div>
+              <div style={{ fontSize: 11, fontWeight: "bold", color: currentBeatColour, textShadow: `0 0 10px ${currentBeatColour}90`, letterSpacing: "0.04em" }}>{coDisplay} <span style={{ fontSize: 7, opacity: 0.75 }}>L/min</span></div>
+            </div>
+          )}
         </div>
       </div>
     </div>

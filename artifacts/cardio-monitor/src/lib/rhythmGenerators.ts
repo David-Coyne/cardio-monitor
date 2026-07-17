@@ -1,6 +1,6 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type RhythmType    = 'SR' | 'ST' | 'SB' | 'AF' | 'SVT' | 'VT' | 'VF' | 'PVC' | 'TRI';
+export type RhythmType    = 'SR' | 'ST' | 'SB' | 'AF' | 'AFL' | 'SVT' | 'VT' | 'VF' | 'PVC' | 'PEA';
 export type IschaemiaZone = 'none' | 'anterior' | 'inferior' | 'lateral';
 export type Lead12Name    = 'I' | 'II' | 'III' | 'aVR' | 'aVL' | 'aVF' | 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6';
 
@@ -43,11 +43,12 @@ export const RHYTHM_CONFIGS: RhythmConfig[] = [
   { type: 'ST',  label: 'ST',  fullName: 'Sinus Tachycardia',          defaultHR: 115, hrMin: 101, hrMax: 180, isLethal: false, defaultSys: 110, defaultDia: 72, defaultCO: 4.8, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 50,  abpMaxY: 135, coMinY: -0.4, coMaxY: 6   },
   { type: 'SB',  label: 'SB',  fullName: 'Sinus Bradycardia',          defaultHR: 48,  hrMin: 30,  hrMax: 59,  isLethal: false, defaultSys: 125, defaultDia: 82, defaultCO: 4.8, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 55,  abpMaxY: 150, coMinY: -0.4, coMaxY: 6   },
   { type: 'AF',  label: 'AF',  fullName: 'Atrial Fibrillation',        defaultHR: 120, hrMin: 60,  hrMax: 180, isLethal: false, defaultSys: 115, defaultDia: 75, defaultCO: 4.0, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 45,  abpMaxY: 140, coMinY: -0.4, coMaxY: 6   },
+  { type: 'AFL', label: 'AFL', fullName: 'Atrial Flutter',             defaultHR: 75,  hrMin: 50,  hrMax: 175, isLethal: false, defaultSys: 118, defaultDia: 76, defaultCO: 4.5, ecgMinY: -0.55, ecgMaxY: 1.45, abpMinY: 45,  abpMaxY: 145, coMinY: -0.4, coMaxY: 6   },
   { type: 'SVT', label: 'SVT', fullName: 'Supraventricular Tachycardia',                        defaultHR: 180, hrMin: 150, hrMax: 240, isLethal: false, defaultSys: 100, defaultDia: 70, defaultCO: 4.0, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 40,  abpMaxY: 130, coMinY: -0.4, coMaxY: 6   },
   { type: 'VT',  label: 'VT',  fullName: 'Ventricular Tachycardia',    defaultHR: 150, hrMin: 120, hrMax: 200, isLethal: true,  defaultSys: 90,  defaultDia: 60, defaultCO: 3.0, ecgMinY: -0.6,  ecgMaxY: 1.6,  abpMinY: 30,  abpMaxY: 120, coMinY: -0.4, coMaxY: 5   },
   { type: 'VF',  label: 'VF',  fullName: 'Ventricular Fibrillation',   defaultHR: 300, hrMin: 300, hrMax: 300, isLethal: true,  defaultSys: 40,  defaultDia: 25, defaultCO: 0.1, ecgMinY: -2.0,  ecgMaxY: 2.0,  abpMinY: 0,   abpMaxY: 80,  coMinY: -0.1, coMaxY: 0.5 },
   { type: 'PVC', label: 'Bigemini', fullName: 'Ventricular Bigeminy',  defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.5, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
-  { type: 'TRI', label: 'Trigemin', fullName: 'Ventricular Trigeminy', defaultHR: 75, hrMin: 50, hrMax: 110, isLethal: false, defaultSys: 118, defaultDia: 78, defaultCO: 4.7, ecgMinY: -0.65, ecgMaxY: 1.45, abpMinY: 40, abpMaxY: 155, coMinY: -0.4, coMaxY: 6 },
+  { type: 'PEA', label: 'PEA',     fullName: 'Pulseless Electrical Activity', defaultHR: 40, hrMin: 20, hrMax: 60, isLethal: true, defaultSys: 15, defaultDia: 10, defaultCO: 0.1, ecgMinY: -0.45, ecgMaxY: 1.35, abpMinY: 0, abpMaxY: 50, coMinY: -0.1, coMaxY: 0.5 },
 ];
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -606,63 +607,30 @@ function generatePVC(hr: number, baseSys: number, baseDia: number, baseCO: numbe
   };
 }
 
-// ── Premature Ventricular Contraction (trigeminy: N–N–PVC) ───────────────────
+// ── Atrial Flutter ────────────────────────────────────────────────────────────
+// Classic sawtooth flutter waves at ~300/min (12 samples/cycle at 60 Hz) with
+// QRS complexes superimposed at the ventricular rate (hr).  The saw runs
+// continuously — it doesn't reset at each ventricular beat — producing the
+// hallmark "flutter waves marching through QRS" appearance.
+// Conduction ratio (4:1 → HR~75, 2:1 → HR~150) emerges naturally from hr.
 
-function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO: number, ischaemia: IschaemiaZone = 'none'): WaveformData {
-  const baseBS      = 3600 / hr;
-  const coupling    = 0.72;              // PVC fires at 72 % of sinus cycle from preceding beat
-  const compensatory = 2.0 - coupling;  // = 1.28 × sinus cycle (same as bigeminy)
+function generateAFL(hr: number, ischaemia: IschaemiaZone = 'none'): WaveformData {
+  const FLUTTER_RATE = 300;                       // atrial flutter rate (bpm)
+  const ventrBS      = 3600 / hr;                 // samples per ventricular beat
+  const flutterBS    = 3600 / FLUTTER_RATE;       // = 12 samples per flutter cycle
 
-  // Pattern: b%3===0 → N (full), b%3===1 → N (shortened to coupling interval),
-  //          b%3===2 → PVC (compensatory pause)
-  const beatStarts: number[] = [];
-  const beatLens:   number[] = [];
-  const beatTypes:  boolean[] = [];
+  const totalBeats = Math.ceil(SAMPLES / ventrBS) + 2;
 
-  let cursor = 0, b = 0;
-  while (cursor < SAMPLES + baseBS * 6) {
-    beatStarts.push(cursor);
-    const mod     = b % 3;
-    const isPVC_  = mod === 2;
-    const len     = Math.round(
-      mod === 1 ? baseBS * coupling :
-      mod === 2 ? baseBS * compensatory :
-                  baseBS
-    );
-    beatLens.push(len);
-    beatTypes.push(isPVC_);
-    cursor += len;
-    b++;
-  }
+  const bSys = new Float32Array(totalBeats);
+  const bDia = new Float32Array(totalBeats);
+  const bCO  = new Float32Array(totalBeats);
 
-  const nBeats = beatStarts.length;
-  const bSys   = new Float32Array(nBeats);
-  const bDia   = new Float32Array(nBeats);
-  const bCO    = new Float32Array(nBeats);
-
-  for (let bi = 0; bi < nBeats; bi++) {
-    if (beatTypes[bi]) {
-      // PVC: ineffective ejection
-      bSys[bi] = baseDia + (baseSys - baseDia) * 0.28 + 2 * (pr(bi + 100) * 2 - 1);
-      bDia[bi] = baseDia - 3 + 1 * (pr(bi + 200) * 2 - 1);
-      bCO[bi]  = baseCO * 0.15 + 0.04 * (pr(bi + 300) * 2 - 1);
-    } else {
-      // Normal sinus — post-compensatory beat (b%3===0) gets Frank-Starling boost
-      const postPVC = (bi > 0 && bi % 3 === 0) ? 1 : 0;
-      const rp      = (bi / (SAMPLES / baseBS)) * RESP_CYCLES * 2 * Math.PI;
-      bSys[bi] = baseSys + 6 * Math.sin(rp) + 2 * (pr(bi + 500) * 2 - 1) + postPVC * 6;
-      bDia[bi] = baseDia + 3 * Math.cos(rp)  + 1 * (pr(bi + 600) * 2 - 1);
-      bCO[bi]  = baseCO  + 0.3 * Math.sin(rp) + 0.1 * (pr(bi + 700) * 2 - 1) + postPVC * 0.15;
-    }
-  }
-
-  const sampleBI = new Int32Array(SAMPLES);
-  const sampleBP = new Float32Array(SAMPLES);
-  let cur = 0;
-  for (let i = 0; i < SAMPLES; i++) {
-    while (cur < nBeats - 2 && i >= beatStarts[cur + 1]) cur++;
-    sampleBI[i] = cur;
-    sampleBP[i] = (i - beatStarts[cur]) / beatLens[cur];
+  const baseSys = 118, baseDia = 76, baseCO = 4.5;
+  for (let bi = 0; bi < totalBeats; bi++) {
+    const rp = (bi / (SAMPLES / ventrBS)) * RESP_CYCLES * 2 * Math.PI;
+    bSys[bi] = baseSys + 4  * Math.sin(rp) + 2    * (pr(bi + 200) * 2 - 1);
+    bDia[bi] = baseDia + 2  * Math.cos(rp) + 1    * (pr(bi + 300) * 2 - 1);
+    bCO[bi]  = baseCO  + 0.2 * Math.sin(rp) + 0.08 * (pr(bi + 400) * 2 - 1);
   }
 
   const ecg = new Float32Array(SAMPLES);
@@ -671,48 +639,87 @@ function generateTrigeminy(hr: number, baseSys: number, baseDia: number, baseCO:
   const co  = new Float32Array(SAMPLES);
 
   for (let i = 0; i < SAMPLES; i++) {
-    const bi     = sampleBI[i];
-    const bp     = sampleBP[i];
-    const isPVC_ = beatTypes[bi];
-    const wander = 0.04 * Math.sin((i / SAMPLES) * RESP_CYCLES * 2 * Math.PI);
+    const bi  = Math.min(Math.floor(i / ventrBS), totalBeats - 1);
+    const bpV = (i - bi * ventrBS) / ventrBS;   // 0..1 within ventricular cycle
 
-    let e = wander;
-    if (isPVC_) {
-      e += gaussian(bp, 0.17, 0.009, -0.07);
-      e += gaussian(bp, 0.22, 0.050,  1.10);
-      e += gaussian(bp, 0.34, 0.030,  0.40);
-      e += gaussian(bp, 0.65, 0.075, -0.58);
-    } else {
-      e += gaussian(bp, 0.13,  0.018,  0.18);
-      e += gaussian(bp, 0.265, 0.006, -0.18);
-      e += gaussian(bp, 0.285, 0.009,  1.15);
-      e += gaussian(bp, 0.305, 0.007, -0.32);
-      e += gaussian(bp, 0.52,  0.045,  0.28);
-      e += gaussian(bp, 0.68,  0.022,  0.04);
-      e += ischaemiaECG(bp, ischaemia, 1.0);
-    }
+    // Sawtooth flutter wave: slow negative descent → rapid positive upstroke (Lead II)
+    const fp     = (i % flutterBS) / flutterBS; // 0..1 within each flutter cycle (flutterBS=12)
+    const flutter = fp < 0.76
+      ?  0.17 - fp * 0.48            // gradual descent: +0.17 → −0.19
+      : -0.19 + (fp - 0.76) * 1.50; // rapid upstroke: −0.19 → +0.17
+
+    // QRS + T wave superimposed on flutter
+    let qrs = 0;
+    qrs += gaussian(bpV, 0.22, 0.006, -0.13);   // Q
+    qrs += gaussian(bpV, 0.24, 0.009,  1.10);   // R
+    qrs += gaussian(bpV, 0.26, 0.007, -0.26);   // S
+    qrs += gaussian(bpV, 0.50, 0.055,  0.22);   // T wave
+    qrs += ischaemiaECG(bpV, ischaemia, 1.0);
+
+    ecg[i] = flutter + qrs;
+    abp[i] = abpSample(bpV, bSys[bi], bDia[bi]);
+    art[i] = artSample(bpV, bSys[bi], bDia[bi]);
+    co[i]  = gaussian(bpV, 0.44, 0.075, bCO[bi]);
+  }
+
+  return {
+    ecgData:     Array.from(ecg),
+    abpData:     Array.from(abp),
+    artData:     Array.from(art),
+    coData:      Array.from(co),
+    beatSamples: ventrBS,
+    beatSysArr:  Array.from(bSys),
+    beatDiaArr:  Array.from(bDia),
+    beatCOArr:   Array.from(bCO),
+  };
+}
+
+// ── Pulseless Electrical Activity ─────────────────────────────────────────────
+// The defining feature: organised sinus-like ECG with P-QRS-T, but zero
+// pulsatile ABP output.  The ECG looks deceptively normal; the ABP is a
+// near-flatline.  This is the core teaching point of PEA.
+
+function generatePEA(hr: number): WaveformData {
+  const bs         = 3600 / hr;
+  const totalBeats = Math.ceil(SAMPLES / bs) + 2;
+
+  const ecg = new Float32Array(SAMPLES);
+  const abp = new Float32Array(SAMPLES);
+  const art = new Float32Array(SAMPLES);
+  const co  = new Float32Array(SAMPLES);
+
+  for (let i = 0; i < SAMPLES; i++) {
+    const bi = Math.min(Math.floor(i / bs), totalBeats - 1);
+    const bp = (i - bi * bs) / bs;
+    const rp = (i / SAMPLES) * RESP_CYCLES * 2 * Math.PI;
+
+    // Organised sinus-like ECG — P wave present, QRS slightly broadened,
+    // T wave present.  Deliberately resembles normal sinus to teach that
+    // a "good-looking" ECG does not guarantee a pulse.
+    let e = 0.03 * Math.sin(rp);            // baseline wander
+    e += gaussian(bp, 0.13,  0.018,  0.15); // P wave
+    e += gaussian(bp, 0.265, 0.006, -0.16); // Q
+    e += gaussian(bp, 0.285, 0.012,  1.00); // R (slightly broad)
+    e += gaussian(bp, 0.310, 0.008, -0.28); // S
+    e += gaussian(bp, 0.52,  0.052,  0.20); // T wave
     ecg[i] = e;
 
-    const sys = bSys[bi];
-    const dia = bDia[bi];
-    if (isPVC_) {
-      abp[i] = abpSampleWeak(bp, sys, dia);
-      art[i] = artSampleVT(bp, sys, dia);
-    } else {
-      abp[i] = abpSample(bp, sys, dia);
-      art[i] = artSample(bp, sys, dia);
-    }
-    co[i] = gaussian(bp, 0.44, 0.075, bCO[bi]);
+    // ABP / ART: true flatline — no pulsatile output despite organised ECG
+    abp[i] = 15 + 2.0 * Math.sin(2 * Math.PI * i / 90 + 0.5)
+               + 1.5 * (pr(i + 333) * 2 - 1);
+    art[i] = 12 + 1.5 * Math.sin(2 * Math.PI * i / 95 + 1.2)
+               + 1.0 * (pr(i + 666) * 2 - 1);
+
+    // CO: essentially zero
+    co[i] = 0.08 + 0.04 * Math.sin(2 * Math.PI * i / 30);
   }
 
   return {
     ecgData: Array.from(ecg), abpData: Array.from(abp), artData: Array.from(art), coData: Array.from(co),
-    beatSamples:   baseBS,
-    beatSysArr:    Array.from(bSys),
-    beatDiaArr:    Array.from(bDia),
-    beatCOArr:     Array.from(bCO),
-    beatTypeArr:   beatTypes,
-    beatStartsArr: beatStarts,
+    beatSamples: bs,
+    beatSysArr: [15],
+    beatDiaArr: [10],
+    beatCOArr:  [0.08],
   };
 }
 
@@ -724,10 +731,11 @@ export function generateWaveforms(hr: number, rhythm: RhythmType, ischaemia: Isc
     case 'ST':  return generateSinus(hr, 110, 72, 4.8, ischaemia);
     case 'SB':  return generateSinus(hr, 125, 82, 4.8, ischaemia);
     case 'AF':  return generateAF(hr, ischaemia);
+    case 'AFL': return generateAFL(hr, ischaemia);
     case 'SVT': return generateSVT(hr, ischaemia);
     case 'VT':  return generateVT(hr);
     case 'VF':  return generateVF();
     case 'PVC': return generatePVC(hr, 120, 80, 5.0, ischaemia);
-    case 'TRI': return generateTrigeminy(hr, 120, 80, 5.0, ischaemia);
+    case 'PEA': return generatePEA(hr);
   }
 }

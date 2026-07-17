@@ -20,6 +20,7 @@ interface Heart3DProps {
   paused?:        boolean;
   crossSection?:  boolean;
   ischaemiaZone?: IschaemiaZone;
+  resetRef?:      React.MutableRefObject<(() => void) | null>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,7 +49,6 @@ function getBeatStrength(now: number, heartRate: number, rhythmType: RhythmType)
   }
   let str = beatEnvelope(phase);
   if (rhythmType === "PVC" && Math.floor(now / beatMs) % 2 === 1) str *= 0.22;
-  if (rhythmType === "TRI" && Math.floor(now / beatMs) % 3 === 2) str *= 0.22;
   return str;
 }
 
@@ -210,16 +210,20 @@ vec3 chamberCol(vec3 p, float b) {
   float la = sdEll(p - vec3(-0.22, 0.45,-0.12),vec3(0.232+ex*0.4,0.202+ex*0.4,0.252+ex*0.4));
   float ra = sdEll(p - vec3( 0.26, 0.43,-0.07),vec3(0.212+ex*0.3,0.198+ex*0.3,0.218+ex*0.3));
 
+  // ── Valve cycle phases (b=u_beat: 0=diastole, 1=peak-systole) ──────────────
+  float avClose=smoothstep(0.12,0.72,b);  // AV valves: 0=open(diastole) 1=closed(systole)
+  float slOpen =smoothstep(0.10,0.65,b);  // SL valves: 0=closed(diastole) 1=open(systole)
+
   // ── Tissue colors ─────────────────────────────────────────────────────────
   vec3 oxyCol,deoCol;
   if(u_rhythm==1){oxyCol=vec3(0.32,0.04,0.04);deoCol=vec3(0.04,0.08,0.40);}
   else if(u_rhythm==2){oxyCol=vec3(0.60,0.06,0.06);deoCol=vec3(0.04,0.10,0.52);}
   else{oxyCol=vec3(0.80,0.08,0.06);deoCol=vec3(0.05,0.13,0.62);}
-  vec3 wallCol  = vec3(0.38,0.10,0.06);   // myocardium (dark red-brown)
-  vec3 endoCol  = vec3(0.62,0.28,0.20);   // endocardium (pinkish inner lining)
-  vec3 valveCol = vec3(0.88,0.80,0.50);   // fibrous valve / annulus (cream-ivory)
-  vec3 papCol   = vec3(0.46,0.11,0.07);   // papillary muscle (dense myocardium)
-  vec3 chordCol = vec3(0.74,0.52,0.30);   // chordae tendineae (pale tendon)
+  vec3 wallCol  = mix(vec3(0.35,0.09,0.05),vec3(0.52,0.16,0.08),b*0.90);            // myocardium brightens with contraction
+  vec3 endoCol  = mix(vec3(0.58,0.25,0.17),vec3(0.80,0.40,0.26),b*0.75);            // endocardium brightens
+  vec3 valveCol = mix(vec3(0.86,0.78,0.48),vec3(1.00,0.97,0.66),max(avClose,slOpen)*0.65); // glows when active
+  vec3 papCol   = mix(vec3(0.43,0.10,0.06),vec3(0.60,0.17,0.09),b*0.85);            // papillary muscles redden
+  vec3 chordCol = mix(vec3(0.70,0.50,0.28),vec3(0.88,0.66,0.40),avClose*0.65);      // chordae brighten when taut
 
   // ── Base: blood vs myocardium ─────────────────────────────────────────────
   float k=9.0;
@@ -234,16 +238,17 @@ vec3 chamberCol(vec3 p, float b) {
   float endoF=smoothstep(0.0,0.030,-minSDF)*(1.0-smoothstep(0.030,0.082,-minSDF));
 
   // ── PAPILLARY MUSCLES ─────────────────────────────────────────────────────
+  float pmS=1.0+b*0.26;  // papillaries fatten radially as they contract during systole
   // LV anterolateral papillary (projects from lateral free wall into cavity)
-  float pmLVa=sdEll(p-vec3(-0.30,-0.06,0.01),vec3(0.066,0.122,0.060));
+  float pmLVa=sdEll(p-vec3(-0.30,-0.06,0.01),vec3(0.066*pmS,0.122,0.060*pmS));
   // LV posteromedial papillary (projects from medial wall toward septum)
-  float pmLVp=sdEll(p-vec3( 0.02,-0.04,0.02),vec3(0.058,0.112,0.055));
+  float pmLVp=sdEll(p-vec3( 0.02,-0.04,0.02),vec3(0.058*pmS,0.112,0.055*pmS));
   // RV anterior papillary (smaller, right side)
-  float pmRVa=sdEll(p-vec3( 0.40, 0.01,0.10),vec3(0.042,0.086,0.040));
+  float pmRVa=sdEll(p-vec3( 0.40, 0.01,0.10),vec3(0.042*pmS,0.086,0.040*pmS));
   // RV moderator band (septomarginal trabecula, crosses RV cavity)
-  float modBnd=tapCap(p,vec3(0.16,-0.10,0.08),vec3(0.40,-0.01,0.11),0.024,0.018);
+  float modBnd=tapCap(p,vec3(0.16,-0.10,0.08),vec3(0.40,-0.01,0.11),0.024+b*0.008,0.018);
   float papAll=min(min(pmLVa,pmLVp),min(pmRVa,modBnd));
-  float papF=smoothstep(0.012,-0.008,papAll)*inBlood;
+  float papF=smoothstep(0.016,-0.010,papAll)*inBlood;
 
   // ── CHORDAE TENDINEAE: tendons from papillary tips to valve leaflets ───────
   // LV anterolateral chordae (fan to both mitral leaflets)
@@ -255,45 +260,52 @@ vec3 chamberCol(vec3 p, float b) {
   // RV chordae to tricuspid
   float chRV  =tapCap(p,vec3( 0.40,0.07,0.10),vec3( 0.28,0.25,0.06),0.007,0.004);
   float chorAll=min(min(min(chLVa1,chLVa2),min(chLVp1,chLVp2)),chRV);
-  float chordF=smoothstep(0.007,-0.003,chorAll)*inBlood*(1.0-papF);
+  float chordF=smoothstep(0.007+avClose*0.005,-0.003,chorAll)*inBlood*(1.0-papF);
 
   // ── MITRAL VALVE (LA→LV, bicuspid) ────────────────────────────────────────
-  // Fibrous annulus band at AV junction y≈0.275
   float mvY=0.275;
   float mvBand=max(abs(p.y-mvY)-0.016, max(-0.40-p.x, p.x-0.06));
-  // Anterior leaflet (large, from posterior aorta side)
-  float mvAL=tapCap(p,vec3(-0.30,mvY+0.006,0.01),vec3(-0.04,mvY-0.040,0.01),0.014,0.008);
-  // Posterior leaflet (three scallops, simplified as one)
-  float mvPL=tapCap(p,vec3(-0.04,mvY+0.006,0.00),vec3(-0.30,mvY-0.032,0.00),0.012,0.007);
+  // Leaflet tips bow upward into LA as valve closes during systole
+  float mvTipY=mvY-0.042+avClose*0.078;
+  float mvR1=0.014+avClose*0.007;
+  // Anterior leaflet — bows up and thickens at closure
+  float mvAL=tapCap(p,vec3(-0.30,mvY+0.006,0.01),vec3(-0.04,mvTipY+0.006,0.01),mvR1,0.008+avClose*0.004);
+  // Posterior leaflet
+  float mvPL=tapCap(p,vec3(-0.04,mvY+0.006,0.00),vec3(-0.30,mvTipY,0.00),mvR1*0.85,0.007+avClose*0.003);
   float mvAll=min(mvBand,min(mvAL,mvPL));
-  float mvF=smoothstep(0.010,-0.005,mvAll);
+  float mvF=smoothstep(0.013,-0.005,mvAll);
 
   // ── TRICUSPID VALVE (RA→RV, three leaflets) ───────────────────────────────
   float tvY=0.262;
   float tvBand=max(abs(p.y-tvY)-0.014, max(0.10-p.x, p.x-0.44));
-  float tvL1=tapCap(p,vec3(0.14,tvY+0.005,0.03),vec3(0.28,tvY-0.036,0.04),0.012,0.007);
-  float tvL2=tapCap(p,vec3(0.28,tvY+0.005,0.04),vec3(0.42,tvY-0.030,0.02),0.011,0.006);
-  float tvL3=tapCap(p,vec3(0.38,tvY+0.005,-0.01),vec3(0.16,tvY-0.028,-0.01),0.010,0.006);
+  float tvTipY=tvY-0.034+avClose*0.066;
+  float tvR1=0.012+avClose*0.005;
+  float tvL1=tapCap(p,vec3(0.14,tvY+0.005,0.03),vec3(0.28,tvTipY,       0.04),tvR1,      0.007);
+  float tvL2=tapCap(p,vec3(0.28,tvY+0.005,0.04),vec3(0.42,tvTipY+0.008, 0.02),tvR1*0.92, 0.006);
+  float tvL3=tapCap(p,vec3(0.38,tvY+0.005,-0.01),vec3(0.16,tvTipY,      -0.01),tvR1*0.92,0.006);
   float tvAll=min(tvBand,min(tvL1,min(tvL2,tvL3)));
-  float tvF=smoothstep(0.010,-0.005,tvAll);
+  float tvF=smoothstep(0.013,-0.005,tvAll);
 
   // ── AORTIC VALVE (LV outflow, three semilunar cusps) ─────────────────────
+  // Cusps thin and retract against aortic wall during systole (slOpen high)
   float aoY=0.500;
   float aoBand=max(abs(p.y-aoY)-0.013, max(-0.15-p.x, p.x-0.03));
-  float aoCL=tapCap(p,vec3(-0.14,aoY+0.004,0.01),vec3(-0.04,aoY-0.030,0.01),0.012,0.006);
-  float aoCC=tapCap(p,vec3(-0.12,aoY+0.004,-0.02),vec3(-0.06,aoY-0.026,-0.02),0.010,0.005);
-  float aoCR=tapCap(p,vec3(-0.06,aoY+0.004,0.04),vec3(-0.12,aoY-0.026,0.04),0.010,0.005);
+  float aoR1=0.012-slOpen*0.008; float aoR2=0.006-slOpen*0.004;
+  float aoCL=tapCap(p,vec3(-0.14,aoY+0.004,0.01),vec3(-0.04,aoY-0.030+slOpen*0.026,0.01),aoR1,aoR2);
+  float aoCC=tapCap(p,vec3(-0.12,aoY+0.004,-0.02),vec3(-0.06,aoY-0.026+slOpen*0.026,-0.02),aoR1*0.83,aoR2);
+  float aoCR=tapCap(p,vec3(-0.06,aoY+0.004,0.04),vec3(-0.12,aoY-0.026+slOpen*0.026,0.04),aoR1*0.83,aoR2);
   float aoAll=min(aoBand,min(aoCL,min(aoCC,aoCR)));
-  float aoF=smoothstep(0.009,-0.004,aoAll);
+  float aoF=smoothstep(0.010,-0.004,aoAll)*(1.0-slOpen*0.72);
 
   // ── PULMONARY VALVE (RV outflow, three semilunar cusps) ──────────────────
   float pvY=0.440;
   float pvBand=max(abs(p.y-pvY)-0.012, max(0.13-p.x, p.x-0.35));
-  float pvC1=tapCap(p,vec3(0.14,pvY+0.003,0.07),vec3(0.24,pvY-0.026,0.08),0.010,0.005);
-  float pvC2=tapCap(p,vec3(0.24,pvY+0.003,0.04),vec3(0.34,pvY-0.023,0.06),0.009,0.005);
-  float pvC3=tapCap(p,vec3(0.34,pvY+0.003,0.08),vec3(0.20,pvY-0.021,0.10),0.009,0.004);
+  float pvR1=0.010-slOpen*0.007; float pvR2=0.005-slOpen*0.003;
+  float pvC1=tapCap(p,vec3(0.14,pvY+0.003,0.07),vec3(0.24,pvY-0.026+slOpen*0.020,0.08),pvR1,pvR2);
+  float pvC2=tapCap(p,vec3(0.24,pvY+0.003,0.04),vec3(0.34,pvY-0.023+slOpen*0.020,0.06),pvR1*0.90,pvR2);
+  float pvC3=tapCap(p,vec3(0.34,pvY+0.003,0.08),vec3(0.20,pvY-0.021+slOpen*0.020,0.10),pvR1*0.90,pvR2);
   float pvAll=min(pvBand,min(pvC1,min(pvC2,pvC3)));
-  float pvF=smoothstep(0.008,-0.004,pvAll);
+  float pvF=smoothstep(0.009,-0.004,pvAll)*(1.0-slOpen*0.62);
 
   float valveF=max(max(mvF,tvF),max(aoF,pvF));
 
@@ -303,7 +315,7 @@ vec3 chamberCol(vec3 p, float b) {
   float tbZone=smoothstep(0.030,0.064,tbDepth)*(1.0-smoothstep(0.10,0.19,tbDepth));
   float tbN1=n3(p*9.0+vec3(0.3,0.1,0.7));
   float tbN2=n3(p*19.0+vec3(0.6,0.8,0.2));
-  float tbF=tbZone*step(0.62,tbN1)*step(0.56,tbN2)*0.40*inVent*(1.0-papF)*(1.0-valveF);
+  float tbF=tbZone*step(0.62,tbN1)*step(0.56,tbN2)*(0.40+b*0.32)*inVent*(1.0-papF)*(1.0-valveF);
 
   // ── FOSSA OVALIS (oval depression in interatrial septum) ─────────────────
   // Thin translucent area in IAS at x≈0.10, y≈0.43 (between RA and LA)
@@ -326,7 +338,7 @@ vec3 chamberCol(vec3 p, float b) {
 void main() {
   vec2 uv = (gl_FragCoord.xy/u_res)*2.0-1.0; uv.x *= u_res.x/u_res.y;
   mat3 R=rotY(u_yRot)*rotX(u_xRot), iR=rotX(-u_xRot)*rotY(-u_yRot);
-  vec3 ro_w=vec3(0.0,0.04,2.85), rd_w=normalize(vec3(uv,-1.76));
+  vec3 ro_w=vec3(0.0,0.06,2.22), rd_w=normalize(vec3(uv,-1.44));
   vec3 ro=iR*ro_w, rd=iR*rd_w;
 
   if(u_cross>0.5){
@@ -337,27 +349,27 @@ void main() {
       float d=max(hSDF(p,u_beat),p.z);
       if(d<0.0008){hitc=true;}else if(tc<5.8){tc+=d;}else{tc=5.8;}
     }}
-    if(!hitc){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.018,0.060,0.130)*max(v,0.0)+vec3(0.006,0.022,0.058),1.0);return;}
+    if(!hitc){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.005,0.003,0.006)*max(v,0.0)+vec3(0.002,0.001,0.002),1.0);return;}
     vec3 posc=ro+rd*tc;
     if(posc.z>-0.014){
       // ── Cut face (z≈0): lit chamber blood ────────────────────────────
       vec3 Nw=R*vec3(0.0,0.0,1.0), Vw=-rd_w;
       vec3 L1c=normalize(vec3(1.5,2.2,2.4)),L2c=normalize(vec3(-2.0,0.5,1.0));
       vec3 H1c=normalize(L1c+Vw);
-      float diffc=max(dot(Nw,L1c),0.0)*0.88+max(dot(Nw,L2c),0.0)*0.22+0.30;
-      float spc=pow(max(dot(Nw,H1c),0.0),16.0)*0.72;
+      float diffc=max(dot(Nw,L1c),0.0)*1.10+max(dot(Nw,L2c),0.0)*0.28+0.22;
+      float spc=pow(max(dot(Nw,H1c),0.0),10.0)*1.40;
       float wallDist=clamp(-hSDF(posc,u_beat)*14.0,0.0,1.0);
       vec3 col=chamberCol(posc,u_beat);
       col*=diffc*wallDist;
       col+=vec3(0.95,0.88,0.80)*spc*wallDist;
       col+=col*u_beat*0.22;
-      col=col/(col+1.0);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+      col=col/(col+0.82);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
       gl_FragColor=vec4(col,1.0);
     } else {
       // ── Posterior wall: normal shading ───────────────────────────────
       vec3 N=nrm(posc,u_beat),Nw=R*N,Vw=-rd_w;
       float occ=ao(posc,N,u_beat);
-      vec3 skin;if(u_rhythm==1)skin=vec3(0.32,0.06,0.07);else if(u_rhythm==2)skin=vec3(0.72,0.09,0.05);else skin=vec3(0.86,0.17,0.08);
+      vec3 skin;if(u_rhythm==1)skin=vec3(0.22,0.04,0.06);else if(u_rhythm==2)skin=vec3(0.56,0.07,0.06);else skin=vec3(0.70,0.11,0.09);
       float thick=0.0;vec3 pi=posc;for(int j=0;j<8;j++){pi-=N*0.062;thick+=max(0.0,-hSDF(pi,u_beat));}
       float sss=clamp(thick/0.42,0.0,1.0);
       vec3 L1=normalize(vec3(1.5,2.2,2.4)),L2=normalize(vec3(-2.0,0.5,1.0)),L3=normalize(vec3(0.2,-1.5,-1.6));
@@ -368,19 +380,19 @@ void main() {
       float sh=shd(posc+N*0.013,L1l,u_beat);
       float fr=pow(1.0-max(dot(Nw,Vw),0.0),3.5);
       float ss=pow(max(dot(rd_w,L1),0.0),5.0);
-      vec3 col=skin*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+d3*0.22*vec3(0.76,0.20,0.14)+vec3(0.10,0.018,0.016)*occ);
-      col+=sp1*sh*vec3(1.0,0.95,0.92)*1.30+sp2*vec3(0.72,0.84,1.0)*0.30;
-      col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
-      col+=fr*vec3(0.72,0.12,0.08)*0.28;col*=0.54+0.46*occ;
-      col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
+      vec3 col=skin*(d1*sh*2.1*vec3(1.0,0.94,0.90)+d2*0.16*vec3(0.24,0.40,0.92)+d3*0.13*vec3(0.66,0.11,0.10)+vec3(0.04,0.007,0.007)*occ);
+      col+=sp1*sh*vec3(1.0,0.97,0.96)*2.40+sp2*vec3(0.48,0.66,1.0)*0.22;
+      col+=skin*sss*ss*vec3(1.0,0.42,0.24)*1.40+skin*sss*d2*vec3(0.9,0.34,0.20)*0.56;
+      col+=fr*vec3(1.0,0.50,0.36)*1.70;col*=0.34+0.66*occ;
+      col+=u_beat*fr*vec3(1.0,0.58,0.38)*2.00+u_beat*skin*d1*sh*vec3(1.0,0.58,0.38)*0.80;
       float artRaw2=artD(posc);float am2=1.0-smoothstep(0.0,0.14,artRaw2);
-      vec3 artSkin2=vec3(0.82,0.60,0.32);
+      vec3 artSkin2=vec3(0.94,0.70,0.40);
       vec3 ac2=artSkin2*(d1*sh*1.8*vec3(1.0,0.95,0.88)+d2*0.35*vec3(0.5,0.60,0.72)+vec3(0.14,0.10,0.06)*occ);
       float artSp2=pow(max(dot(Nw,H1),0.0),28.0)*sh;
-      ac2+=vec3(1.0,0.96,0.88)*artSp2*1.2;ac2+=artSkin2*u_beat*0.35;
+      ac2+=vec3(1.0,0.97,0.93)*artSp2*2.6;ac2+=artSkin2*u_beat*0.55;
       col=mix(col,ac2,am2*0.97);
       float ischP=ischaemiaF(posc);col=mix(col,col*vec3(0.50,0.44,0.48),ischP*0.62);
-      col=col/(col+1.0);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+      col=col/(col+0.82);col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
       gl_FragColor=vec4(col,1.0);
     }
     return;
@@ -389,10 +401,10 @@ void main() {
   // ── Normal mode ──────────────────────────────────────────────────────────
   float t=0.22; bool hit=false;
   for(int i=0;i<92;i++){if(!hit){float d=hSDF(ro+rd*t,u_beat);if(d<0.0007){hit=true;}else{if(t<5.8)t+=d;else t=5.8;}}}
-  if(!hit){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.018,0.060,0.130)*max(v,0.0)+vec3(0.006,0.022,0.058),1.0);return;}
+  if(!hit){float v=1.0-dot(uv*0.28,uv*0.28);gl_FragColor=vec4(vec3(0.005,0.003,0.006)*max(v,0.0)+vec3(0.002,0.001,0.002),1.0);return;}
   vec3 pos=ro+rd*t, N=nrm(pos,u_beat), Nw=R*N, Vw=-rd_w;
   float occ=ao(pos,N,u_beat);
-  vec3 skin; if(u_rhythm==1)skin=vec3(0.32,0.06,0.07); else if(u_rhythm==2)skin=vec3(0.72,0.09,0.05); else skin=vec3(0.86,0.17,0.08);
+  vec3 skin; if(u_rhythm==1)skin=vec3(0.22,0.04,0.06); else if(u_rhythm==2)skin=vec3(0.56,0.07,0.06); else skin=vec3(0.70,0.11,0.09);
   float thick=0.0; vec3 pi=pos; for(int j=0;j<8;j++){pi-=N*0.062;thick+=max(0.0,-hSDF(pi,u_beat));}
   float sss=clamp(thick/0.42,0.0,1.0);
   vec3 L1=normalize(vec3(1.5,2.2,2.4)),L2=normalize(vec3(-2.0,0.5,1.0)),L3=normalize(vec3(0.2,-1.5,-1.6));
@@ -403,28 +415,28 @@ void main() {
   float sh=shd(pos+N*0.013,L1l,u_beat);
   float fr=pow(1.0-max(dot(Nw,Vw),0.0),3.5);
   float ss=pow(max(dot(rd_w,L1),0.0),5.0);
-  vec3 col=skin*(d1*sh*1.5*vec3(1.0,0.91,0.88)+d2*0.30*vec3(0.4,0.54,0.76)+d3*0.22*vec3(0.76,0.20,0.14)+vec3(0.10,0.018,0.016)*occ);
-  col+=sp1*sh*vec3(1.0,0.95,0.92)*1.30+sp2*vec3(0.72,0.84,1.0)*0.30;
-  col+=skin*sss*ss*vec3(1.0,0.28,0.14)*0.68+skin*sss*d2*vec3(0.8,0.22,0.12)*0.28;
-  col+=fr*vec3(0.72,0.12,0.08)*0.28; col*=0.54+0.46*occ;
-  col+=u_beat*fr*vec3(1.0,0.28,0.14)*0.42+u_beat*skin*d1*sh*vec3(1.0,0.4,0.28)*0.26;
+  vec3 col=skin*(d1*sh*2.1*vec3(1.0,0.94,0.90)+d2*0.16*vec3(0.24,0.40,0.92)+d3*0.13*vec3(0.66,0.11,0.10)+vec3(0.04,0.007,0.007)*occ);
+  col+=sp1*sh*vec3(1.0,0.97,0.96)*2.40+sp2*vec3(0.48,0.66,1.0)*0.22;
+  col+=skin*sss*ss*vec3(1.0,0.42,0.24)*1.40+skin*sss*d2*vec3(0.9,0.34,0.20)*0.56;
+  col+=fr*vec3(1.0,0.50,0.36)*1.70; col*=0.34+0.66*occ;
+  col+=u_beat*fr*vec3(1.0,0.58,0.38)*2.00+u_beat*skin*d1*sh*vec3(1.0,0.58,0.38)*0.80;
   float artRaw=artD(pos);
   float am=1.0-smoothstep(0.0,0.14,artRaw);
-  vec3 artSkin=vec3(0.82,0.60,0.32);
+  vec3 artSkin=vec3(0.94,0.70,0.40);
   vec3 ac=artSkin*(d1*sh*1.8*vec3(1.0,0.95,0.88)+d2*0.35*vec3(0.5,0.60,0.72)+vec3(0.14,0.10,0.06)*occ);
   float artSp=pow(max(dot(Nw,H1),0.0),28.0)*sh;
-  ac+=vec3(1.0,0.96,0.88)*artSp*1.2;
-  ac+=artSkin*u_beat*0.35;
+  ac+=vec3(1.0,0.97,0.93)*artSp*2.6;
+  ac+=artSkin*u_beat*0.55;
   col=mix(col,ac,am*0.97);
   float gm=1.0-smoothstep(0.0,0.10,gvD(pos));
-  vec3 gvCol=vec3(0.82,0.48,0.28);
-  vec3 gc=gvCol*(d1*sh*1.7*vec3(1.0,0.94,0.88)+d2*0.30*vec3(0.55,0.62,0.76)+vec3(0.16,0.10,0.07)*occ);
-  float gvSp=pow(max(dot(Nw,H1),0.0),14.0)*sh;
-  gc+=vec3(1.0,0.96,0.90)*gvSp*2.4;
-  gc+=gvCol*u_beat*0.20;
+  vec3 gvCol=vec3(0.96,0.62,0.46);
+  vec3 gc=gvCol*(d1*sh*2.2*vec3(1.0,0.96,0.92)+d2*0.20*vec3(0.44,0.56,0.82)+vec3(0.08,0.05,0.04)*occ);
+  float gvSp=pow(max(dot(Nw,H1),0.0),11.0)*sh;
+  gc+=vec3(1.0,0.98,0.96)*gvSp*6.0;
+  gc+=gvCol*u_beat*0.40;
   col=mix(col,gc,gm*0.98);
   float ischN=ischaemiaF(pos);col=mix(col,col*vec3(0.50,0.44,0.48),ischN*0.65);
-  col=col/(col+1.0); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+  col=col/(col+0.82); col=pow(max(col,vec3(0.0)),vec3(1.0/2.2));
   gl_FragColor=vec4(col,1.0);
 }`;
 
@@ -474,6 +486,8 @@ function draw2D(
   rhythmType: RhythmType,
 ) {
   ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = 'rgba(4,2,5,1.0)';
+  ctx.fillRect(0, 0, cw, ch);
 
   const cx = cw * 0.50;
   const cy = ch * 0.49;
@@ -492,9 +506,9 @@ function draw2D(
   const isVT = rhythmType === "VT";
 
   let c0: string, c1: string, c2: string;
-  if (isVF)      { c0 = "#3a0808"; c1 = "#240404"; c2 = "#120202"; }
-  else if (isVT) { c0 = "#8c1010"; c1 = "#6a0c0c"; c2 = "#400808"; }
-  else           { c0 = "#c83a20"; c1 = "#a02818"; c2 = "#6e1610"; }
+  if (isVF)      { c0 = "#260505"; c1 = "#150202"; c2 = "#090101"; }
+  else if (isVT) { c0 = "#7e0d0d"; c1 = "#5a0909"; c2 = "#360505"; }
+  else           { c0 = "#b82c18"; c1 = "#8e1e10"; c2 = "#5c0e08"; }
 
   ctx.save();
   ctx.translate(cx, cy);
@@ -503,10 +517,10 @@ function draw2D(
   // ── Layer 0: great vessels (aortic arch, pulmonary trunk, SVC, branches) ──
   {
     const gvAlpha = (0.90 + beat * 0.08).toFixed(3);
-    const gvBase    = `rgba(196,118,72,${gvAlpha})`;
-    const gvMid     = `rgba(176,100,58,${gvAlpha})`;
-    const gvShine   = `rgba(238,180,130,${gvAlpha})`;
-    const gvShadow  = `rgba(120,56,28,${gvAlpha})`;
+    const gvBase    = `rgba(216,132,86,${gvAlpha})`;
+    const gvMid     = `rgba(190,110,66,${gvAlpha})`;
+    const gvShine   = `rgba(255,215,175,${gvAlpha})`;
+    const gvShadow  = `rgba(110,50,24,${gvAlpha})`;
     ctx.lineCap  = "round";
     ctx.lineJoin = "round";
     const drawGV = (draw: () => void, w: number, col: string) => {
@@ -844,7 +858,7 @@ function pickArtery(
   const uvY = -((py / ch) * 2 - 1);
   const mag = Math.sqrt(uvX*uvX + uvY*uvY + 1.76*1.76);
   const rdW: V3 = [uvX/mag, uvY/mag, -1.76/mag];
-  const ro = applyIR([0, 0.04, 2.85], xRot, yRot);
+  const ro = applyIR([0, 0.06, 2.22], xRot, yRot);
   const rd = applyIR(rdW, xRot, yRot);
 
   let best: ArteryDef | null = null;
@@ -876,16 +890,18 @@ export function Heart3D({
   paused = false,
   crossSection = false,
   ischaemiaZone = 'none',
+  resetRef,
 }: Heart3DProps) {
   const w = svgWidth  ?? 158;
   const h = svgHeight ?? 178;
 
   const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const xRotRef     = useRef(0.0);
-  const yRotRef     = useRef(0.0);
+  const xRotRef     = useRef(-0.18);
+  const yRotRef     = useRef(0.22);
+
+  // Wire up external reset callback
+  if (resetRef) resetRef.current = () => { xRotRef.current = -0.18; yRotRef.current = 0.22; };
   const dragRef     = useRef<{ x: number; y: number } | null>(null);
-  const [xRotDeg, setXRotDeg] = useState(0);
-  const [yRotDeg, setYRotDeg] = useState(0);
   const [hoverArt, setHoverArt] = useState<{ art: ArteryDef; cx: number; cy: number } | null>(null);
   const pausedRef   = useRef(paused);
   const crossRef    = useRef(crossSection);
@@ -1025,8 +1041,6 @@ export function Heart3D({
       yRotRef.current = yRotRef.current + dx * 0.013;
       dragRef.current.x = e.clientX;
       dragRef.current.y = e.clientY;
-      setXRotDeg(Math.round(xRotRef.current * 180 / Math.PI));
-      setYRotDeg(Math.round(yRotRef.current * 180 / Math.PI));
       setHoverArt(null);
       return;
     }
@@ -1072,6 +1086,7 @@ export function Heart3D({
           </div>
         )}
 
+
       </div>
 
       {/* Artery hover tooltip — fixed so it escapes overflow:hidden */}
@@ -1112,67 +1127,6 @@ export function Heart3D({
         </div>
       )}
 
-      {/* Rotation sliders */}
-      <div style={{ width: w, marginTop: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-        {/* X-axis */}
-        <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 6 }}>
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap", minWidth: 8 }}>X</span>
-          <input
-            type="range"
-            min={-180}
-            max={180}
-            step={1}
-            value={xRotDeg}
-            onChange={e => {
-              const deg = Number(e.target.value);
-              setXRotDeg(deg);
-              xRotRef.current = deg * Math.PI / 180;
-            }}
-            style={{
-              flex: 1,
-              appearance: "none",
-              WebkitAppearance: "none",
-              height: 3,
-              borderRadius: 2,
-              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((xRotDeg + 180) / 360) * 100}%, rgba(40,60,40,0.6) ${((xRotDeg + 180) / 360) * 100}%)`,
-              outline: "none",
-              cursor: "pointer",
-            }}
-          />
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 28, textAlign: "right" }}>
-            {xRotDeg > 0 ? `+${xRotDeg}°` : `${xRotDeg}°`}
-          </span>
-        </div>
-        {/* Y-axis */}
-        <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 6 }}>
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", whiteSpace: "nowrap", minWidth: 8 }}>Y</span>
-          <input
-            type="range"
-            min={-180}
-            max={180}
-            step={1}
-            value={yRotDeg}
-            onChange={e => {
-              const deg = Number(e.target.value);
-              setYRotDeg(deg);
-              yRotRef.current = deg * Math.PI / 180;
-            }}
-            style={{
-              flex: 1,
-              appearance: "none",
-              WebkitAppearance: "none",
-              height: 3,
-              borderRadius: 2,
-              background: `linear-gradient(to right, rgba(0,200,100,0.7) ${((yRotDeg + 180) / 360) * 100}%, rgba(40,60,40,0.6) ${((yRotDeg + 180) / 360) * 100}%)`,
-              outline: "none",
-              cursor: "pointer",
-            }}
-          />
-          <span style={{ fontSize: 7, fontFamily: "monospace", color: "rgba(100,160,100,0.6)", minWidth: 28, textAlign: "right" }}>
-            {yRotDeg > 0 ? `+${yRotDeg}°` : `${yRotDeg}°`}
-          </span>
-        </div>
-      </div>
 
     </div>
   );
