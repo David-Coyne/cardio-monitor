@@ -1,2 +1,3 @@
 - [Cardio monitor ECG modeling](cardio-monitor-ecg-modeling.md) — ECG traces are stylized gaussian-template synthesis, not real signal sim; keep new lead/rhythm views consistent with that approach.
 - [GitHub push auth failures](github-push-auth.md) — `git push github ...` can hang or 401 even when the connection shows "healthy"; bypass askpass with a direct token URL.
+- [WebGL screenshot vs browser](webgl-screenshot-env.md) — Three.js WebGL 2 fails in screenshot tool (no GPU); works fine in user's real browser; "WebGL 2 unavailable" fallback is expected.

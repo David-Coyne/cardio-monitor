@@ -121,7 +121,7 @@ export function WaveformCanvas({
       ctx.clearRect(0, 0, width, height);
 
       // === Sweeping write-head (left → right, wraps every windowSeconds) ===
-      const sweepFraction = (rawTime % windowMs) / windowMs;
+      const sweepFraction = ((rawTime - birthRawTime) % windowMs) / windowMs;
       const writeX        = Math.floor(sweepFraction * width);
       const eraserW       = Math.max(20, Math.floor(width * 0.06));
 

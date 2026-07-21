@@ -92,7 +92,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
       const progress = elapsed / TOTAL_DURATION;
 
       // Sweep position shared across all lead cells — they all stay in sync
-      const sweepFraction     = (rawTime % windowMs) / windowMs;
+      const sweepFraction     = ((rawTime - birthRawTime) % windowMs) / windowMs;
       const elapsedSinceBirth = rawTime - birthRawTime;
       const firstPassComplete = elapsedSinceBirth >= windowMs;
       const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceBirth / windowMs);
