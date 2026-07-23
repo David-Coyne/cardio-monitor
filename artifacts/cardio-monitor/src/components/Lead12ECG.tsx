@@ -12,6 +12,7 @@ interface Lead12ECGProps {
   color?: string;
   paused?: boolean;
   beatPalette?: readonly string[] | null;
+  beatSamples?: number;
 }
 
 const LEAD_GRID: Lead12Name[] = [
@@ -31,7 +32,7 @@ const WINDOW_SECONDS  = 3.4;
 const MIN_Y = -1.6;
 const MAX_Y =  1.6;
 
-export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false, beatPalette }: Lead12ECGProps) {
+export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false, beatPalette, beatSamples: beatSamplesProp }: Lead12ECGProps) {
   const leads = useMemo(() => generate12LeadSnapshot(hr, ischaemiaZone), [hr, ischaemiaZone]);
   const canvasRefs       = useRef<Partial<Record<Lead12Name, HTMLCanvasElement | null>>>({});
   const pausedRef        = useRef(paused);
@@ -110,7 +111,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
 
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
-        const beatSamples        = Math.round(data.length / Math.max(1, Math.round(hr * (TOTAL_DURATION / 1000) / 60)));
+        const beatSamples        = beatSamplesProp ?? Math.round(data.length / Math.max(1, Math.round(hr * (TOTAL_DURATION / 1000) / 60)));
 
         const writeX  = Math.floor(sweepFraction * width);
         const eraserW = Math.max(8, Math.floor(width * 0.06));

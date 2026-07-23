@@ -534,7 +534,7 @@ export default function Monitor() {
                 {ischaemiaZone === 'none' ? (
                   <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} beatColor={isLethal ? null : currentBeatColour} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
                 ) : (
-                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} />
+                  <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
                 )}
                 {pauseBtn}
               </div>
@@ -830,7 +830,7 @@ export default function Monitor() {
               paused={paused}
             />
           ) : (
-            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} />
+            <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
           )}
           {pauseBtn}
         </div>

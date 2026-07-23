@@ -1,15 +1,15 @@
 /**
  * HeartGLB — renders realistic_human_heart.glb using vanilla Three.js.
  *
- * Pre-creates the WebGL 1 context the same way Heart3D does (canvas.getContext('webgl'))
- * and passes it to THREE.WebGLRenderer to avoid the "BindToCurrentSequence" error
- * that occurs when Three.js tries to create its own context in sandboxed environments.
+ * Pre-creates the WebGL 2 context and passes it to THREE.WebGLRenderer to avoid
+ * the "BindToCurrentSequence" error in sandboxed environments.
  */
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { RhythmType, IschaemiaZone } from "@/lib/rhythmGenerators";
+
 
 interface HeartGLBProps {
   heartRate:      number;
@@ -90,12 +90,22 @@ export function HeartGLB({
     }
 
     // ── Three.js renderer re-using our pre-created WebGL 2 context ────────────
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      context: gl,
-      antialias: false,
-      alpha: true,
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        context: gl,
+        antialias: false,
+        alpha: true,
+      });
+    } catch {
+      canvas.remove();
+      const msg = document.createElement('div');
+      msg.textContent = '3D unavailable';
+      msg.style.cssText = 'color:#555;font-size:10px;padding:12px;font-family:monospace';
+      container.appendChild(msg);
+      return;
+    }
     renderer.setPixelRatio(dpr);
     renderer.setSize(W, H, false); // false = don't override canvas style
     renderer.shadowMap.enabled = false; // keep it lean
@@ -149,10 +159,17 @@ export function HeartGLB({
     const defaultTarget = new THREE.Vector3(0, 0, 0);
     let lastBeat = 0;
 
+    // ── Suppress Three.js internal resource loading errors ────────────────────
+    const prevOnError = THREE.DefaultLoadingManager.onError;
+    THREE.DefaultLoadingManager.onError = (url) => {
+      console.warn('HeartGLB: resource load error (suppressed):', url);
+    };
+
     // ── Load GLB ─────────────────────────────────────────────────────────────
     const loader = new GLTFLoader();
     loader.load('/models/realistic_human_heart.glb', (gltf) => {
       const model = gltf.scene;
+
 
       // Normalise: centre + scale to ~1.8 unit diameter
       const box    = new THREE.Box3().setFromObject(model);
@@ -183,6 +200,8 @@ export function HeartGLB({
       camera.position.set(0, 0.1, dist);
       defaultCamPos = camera.position.clone();
       controls.update();
+    }, undefined, (err) => {
+      console.warn('HeartGLB: failed to load GLB', err);
     });
 
     // ── Reset callback ────────────────────────────────────────────────────────
@@ -212,45 +231,47 @@ export function HeartGLB({
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
-      const { heartRate: hr, rhythmType: rt, paused: isPaused, crossSection: cs } = propsRef.current;
+      try {
+        const { heartRate: hr, rhythmType: rt, paused: isPaused, crossSection: cs } = propsRef.current;
 
-      // Update clipping if changed
-      const wantClip = cs ? [clipPlane] : [];
-      if (wantClip.length !== currentClip.length) {
-        currentClip = wantClip;
-        modelMeshes.forEach(m => {
-          (m.material as THREE.MeshStandardMaterial).clippingPlanes = currentClip;
-          (m.material as THREE.MeshStandardMaterial).needsUpdate = true;
-        });
-      }
-
-      if (!isPaused) {
-        const now  = performance.now();
-        const beat = getBeatStrength(now, hr, rt);
-
-        // Scale pulse: rest=1.0, peak=1.045
-        const sc = 1.0 + 0.045 * beat;
-        modelRoot.scale.setScalar(sc);
-
-        // Subtle emissive flash at beat peak
-        if (modelMeshes.length > 0) {
-          if (beat > 0.55 && lastBeat <= 0.55) {
-            modelMeshes.forEach(m => {
-              const mat = m.material as THREE.MeshStandardMaterial;
-              if (mat?.emissive) mat.emissive.setHex(0x2a0000);
-            });
-          } else if (beat < 0.08 && lastBeat >= 0.08) {
-            modelMeshes.forEach(m => {
-              const mat = m.material as THREE.MeshStandardMaterial;
-              if (mat?.emissive) mat.emissive.setHex(0x000000);
-            });
-          }
+        // Update clipping if changed
+        const wantClip = cs ? [clipPlane] : [];
+        if (wantClip.length !== currentClip.length) {
+          currentClip = wantClip;
+          modelMeshes.forEach(m => {
+            (m.material as THREE.MeshStandardMaterial).clippingPlanes = currentClip;
+            (m.material as THREE.MeshStandardMaterial).needsUpdate = true;
+          });
         }
-        lastBeat = beat;
-      }
 
-      controls.update();
-      renderer.render(scene, camera);
+        if (!isPaused) {
+          const now  = performance.now();
+          const beat = getBeatStrength(now, hr, rt);
+
+          const sc = 1.0 + 0.045 * beat;
+          modelRoot.scale.setScalar(sc);
+
+          if (modelMeshes.length > 0) {
+            if (beat > 0.55 && lastBeat <= 0.55) {
+              modelMeshes.forEach(m => {
+                const mat = m.material as THREE.MeshStandardMaterial;
+                if (mat?.emissive) mat.emissive.setHex(0x2a0000);
+              });
+            } else if (beat < 0.08 && lastBeat >= 0.08) {
+              modelMeshes.forEach(m => {
+                const mat = m.material as THREE.MeshStandardMaterial;
+                if (mat?.emissive) mat.emissive.setHex(0x000000);
+              });
+            }
+          }
+          lastBeat = beat;
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      } catch (e) {
+        console.warn('HeartGLB render error:', e);
+      }
     };
     tick();
 
@@ -260,6 +281,7 @@ export function HeartGLB({
       controls.dispose();
       renderer.dispose();
       if (resetRef) resetRef.current = null;
+      THREE.DefaultLoadingManager.onError = prevOnError;
       try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* ok */ }
       if (container.contains(canvas)) container.removeChild(canvas);
     };

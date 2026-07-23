@@ -1,0 +1,14 @@
+[build]
+  command = "pnpm --filter @workspace/cardio-monitor run build"
+  publish = "artifacts/cardio-monitor/dist/public"
+
+[build.environment]
+  PORT         = "3000"
+  BASE_PATH    = "/"
+  NODE_VERSION = "20"
+  PNPM_VERSION = "9"
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
