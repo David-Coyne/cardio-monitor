@@ -6,7 +6,7 @@
   PORT         = "3000"
   BASE_PATH    = "/"
   NODE_VERSION = "20"
-  PNPM_VERSION = "9"
+  PNPM_VERSION = "10.30.3"
 
 [[redirects]]
   from   = "/*"
