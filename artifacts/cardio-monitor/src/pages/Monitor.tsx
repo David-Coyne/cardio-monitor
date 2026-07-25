@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { HeartGLB } from "@/components/HeartGLB";
+import { Lead3ECG } from "@/components/Lead3ECG";
 import { Lead12ECG } from "@/components/Lead12ECG";
 import {
   type RhythmType,
@@ -93,6 +94,7 @@ export default function Monitor() {
   const [beatIndex, setBeatIndex] = useState(0);
   const beatIndexRef = useRef(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [ecgLeads, setEcgLeads] = useState<'3' | '12'>('3');
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -382,6 +384,26 @@ export default function Monitor() {
           RESET HEART ROTATION
         </button>
 
+        <div style={{ fontSize: "clamp(0.5rem,0.8vw,0.7rem)", color: "rgba(0,200,255,0.55)", letterSpacing: "0.18em", fontWeight: "bold", borderBottom: "1px solid rgba(0,200,255,0.12)", paddingBottom: 4 }}>ECG LEADS</div>
+
+        {/* ECG leads selector */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "clamp(3px,0.4vw,5px)" }}>
+          {(['3', '12'] as const).map(n => {
+            const active = ecgLeads === n;
+            return (
+              <button key={n} onClick={() => setEcgLeads(n)} style={{
+                fontSize: "clamp(0.52rem,0.82vw,0.7rem)", fontWeight: "bold",
+                padding: "clamp(4px,0.55vh,7px) 0",
+                borderRadius: 3, cursor: "pointer", letterSpacing: "0.06em",
+                color:      active ? "rgba(0,200,255,0.95)" : "rgba(0,200,255,0.35)",
+                background: active ? "rgba(0,200,255,0.10)" : "transparent",
+                border:     `1px solid ${active ? "rgba(0,200,255,0.50)" : "rgba(80,80,80,0.2)"}`,
+                boxShadow:  active ? "0 0 5px rgba(0,200,255,0.20)" : "none",
+              }}>{n}-LEAD</button>
+            );
+          })}
+        </div>
+
         <div style={{ fontSize: "clamp(0.5rem,0.8vw,0.7rem)", color: "rgba(255,200,60,0.55)", letterSpacing: "0.18em", fontWeight: "bold", borderBottom: "1px solid rgba(255,200,60,0.12)", paddingBottom: 4 }}>ISCHAEMIA</div>
 
         {/* Ischaemia zone buttons */}
@@ -540,13 +562,13 @@ export default function Monitor() {
 
         {/* ── Header ─────────────────────────────────────────────────────────── */}
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "clamp(4px,0.6vh,8px) clamp(12px,1.5vw,24px)", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: "clamp(8px,1.5vw,20px)" }}>
+          {hamburgerBtn}
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
             <div style={{ fontSize: "clamp(0.7rem,1.4vw,1.5rem)", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", wordBreak: "break-word" }}>
               {rhythmCfg.fullName.toUpperCase()}
             </div>
           </div>
           {setHrBox()}
-          {hamburgerBtn}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "clamp(2px,0.3vh,4px)", flexShrink: 0 }}>
             <div style={{
               fontSize: "clamp(0.55rem,1vw,0.85rem)", fontWeight: "bold", letterSpacing: "0.15em", padding: "2px 8px", borderRadius: 3,
@@ -607,12 +629,12 @@ export default function Monitor() {
 
           {/* Right: waveforms */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, padding: "4px 12px 10px", minWidth: 0, justifyContent: "center" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, height: ischaemiaZone === 'none' ? "50%" : "88%", minHeight: 0 }}>
-              <div style={{ flex: ischaemiaZone === 'none' ? 1 : 3, minHeight: 0, position: "relative" }}>
-                {ischaemiaZone === 'none' ? (
-                  <WaveformCanvas data={ecgData} color={isLethal ? "#ff4040" : "#00ff41"} beatColor={isLethal ? null : currentBeatColour} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} label="ECG II" value={hrDisplay} unit="bpm" minY={rhythmCfg.ecgMinY} maxY={rhythmCfg.ecgMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
-                ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, height: "88%", minHeight: 0 }}>
+              <div style={{ flex: 3, minHeight: 0, position: "relative" }}>
+                {ecgLeads === '12' ? (
                   <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
+                ) : (
+                  <Lead3ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
                 )}
                 {pauseBtn}
               </div>
@@ -651,6 +673,7 @@ export default function Monitor() {
           flexShrink: 0,
         }}
       >
+        {hamburgerBtn}
         <div style={{ flex: "1 1 0", minWidth: 0 }}>
           <div
             className="text-[10px] font-bold tracking-widest"
@@ -721,10 +744,8 @@ export default function Monitor() {
           </span>
         </div>
 
-        {/* ── Hamburger + Vital signs + alarm ─────────────────────────────── */}
-        <div className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
-        {hamburgerBtn}
-        <div className="flex flex-col items-end gap-0.5">
+        {/* ── Vital signs + alarm ─────────────────────────────────────────── */}
+        <div className="flex flex-col items-end gap-0.5" style={{ flexShrink: 0 }}>
           <div
             className="text-[9px] font-bold tracking-widest animate-pulse px-1.5 py-0.5 rounded"
             style={{
@@ -757,7 +778,6 @@ export default function Monitor() {
               <span className="text-[7px] text-[#ff4444] opacity-60">({mapDisplay})</span>
             </div>
           </div>
-        </div>
         </div>
       </header>
 
@@ -812,23 +832,10 @@ export default function Monitor() {
       {/* ── Waveform panels ─────────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 gap-1 px-2 pb-2 pt-1 min-h-0">
         <div className="flex-1 min-h-0" style={{ position: "relative" }}>
-          {ischaemiaZone === 'none' ? (
-            <WaveformCanvas
-              data={ecgData}
-              color={isLethal ? "#ff4040" : "#00ff41"}
-              beatColor={isLethal ? null : currentBeatColour}
-              beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)}
-              beatSamples={beatSamples}
-              label="ECG II"
-              value={hrDisplay}
-              unit="bpm"
-              minY={rhythmCfg.ecgMinY}
-              maxY={rhythmCfg.ecgMaxY}
-              windowSeconds={6}
-              paused={paused}
-            />
-          ) : (
+          {ecgLeads === '12' ? (
             <Lead12ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
+          ) : (
+            <Lead3ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
           )}
           {pauseBtn}
         </div>
