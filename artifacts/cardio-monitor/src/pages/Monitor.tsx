@@ -92,6 +92,7 @@ export default function Monitor() {
   const [beatColourOn, setBeatColourOn] = useState(false);
   const [beatIndex, setBeatIndex] = useState(0);
   const beatIndexRef = useRef(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const rhythmCfg = RHYTHM_CONFIGS.find(r => r.type === rhythmType)!;
   const isVF      = rhythmType === "VF";
@@ -264,6 +265,147 @@ export default function Monitor() {
   // Beat colour
   const currentBeatColour = beatColourOn ? BEAT_PALETTE[beatIndex % BEAT_PALETTE.length] : null;
 
+  // ── Hamburger menu overlay ──────────────────────────────────────────────────
+  const hamburgerBtn = (
+    <button
+      onClick={() => setMenuOpen(v => !v)}
+      aria-label={menuOpen ? "Close menu" : "Open menu"}
+      style={{
+        display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
+        gap: "clamp(2px,0.4vh,4px)", padding: "clamp(4px,0.6vw,8px)",
+        width: "clamp(28px,3vw,38px)", height: "clamp(28px,3vw,38px)",
+        borderRadius: 4, cursor: "pointer", flexShrink: 0,
+        background: menuOpen ? "rgba(0,255,65,0.08)" : "transparent",
+        border: `1px solid ${menuOpen ? "rgba(0,255,65,0.35)" : "rgba(60,60,60,0.5)"}`,
+        transition: "all 0.15s",
+      }}
+    >
+      {[0,1,2].map(i => (
+        <span key={i} style={{
+          display: "block",
+          width: "clamp(11px,1.4vw,16px)", height: 2,
+          background: menuOpen ? "#00ff41" : "rgba(180,180,180,0.7)",
+          borderRadius: 1,
+          transition: "all 0.15s",
+          transform: menuOpen
+            ? (i === 0 ? "translateY(4px) rotate(45deg)" : i === 2 ? "translateY(-4px) rotate(-45deg)" : "scaleX(0)")
+            : "none",
+          transformOrigin: "center",
+        }} />
+      ))}
+    </button>
+  );
+
+  const menuOverlay = menuOpen && (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={() => setMenuOpen(false)}
+        style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.35)" }}
+      />
+      {/* Panel */}
+      <div style={{
+        position: "fixed", top: "clamp(44px,6vh,64px)", right: "clamp(8px,1.5vw,20px)",
+        zIndex: 50, background: "#0b1812", border: "1px solid rgba(0,255,65,0.25)",
+        borderRadius: 6, padding: "clamp(10px,1.5vw,16px)", minWidth: "clamp(180px,22vw,240px)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.7)", fontFamily: "monospace",
+        display: "flex", flexDirection: "column", gap: "clamp(8px,1.2vh,12px)",
+      }}>
+        <div style={{ fontSize: "clamp(0.5rem,0.8vw,0.7rem)", color: "rgba(0,255,65,0.5)", letterSpacing: "0.18em", fontWeight: "bold", borderBottom: "1px solid rgba(0,255,65,0.12)", paddingBottom: 4 }}>DISPLAY</div>
+
+        {/* Sound toggle */}
+        <button
+          data-testid="button-sound-toggle"
+          onClick={() => { unlockAudio(); toggleMute(); }}
+          style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "clamp(4px,0.6vh,7px) clamp(8px,1vw,12px)",
+            borderRadius: 4, cursor: "pointer",
+            color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.85)",
+            background: muted ? "transparent" : "rgba(0,255,65,0.07)",
+            border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.28)"}`,
+            fontSize: "clamp(0.55rem,0.85vw,0.72rem)", fontWeight: "bold", letterSpacing: "0.1em",
+          }}
+        >
+          <span>HEART SOUND</span>
+          <span style={{ opacity: 0.8 }}>{muted ? "OFF" : "ON"}</span>
+        </button>
+
+        {/* Beat colour toggle */}
+        <button
+          data-testid="button-beat-colour-toggle"
+          onClick={() => setBeatColourOn(v => !v)}
+          style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "clamp(4px,0.6vh,7px) clamp(8px,1vw,12px)",
+            borderRadius: 4, cursor: "pointer",
+            color:      beatColourOn ? (currentBeatColour ?? "#00c8ff") : "rgba(100,100,100,0.6)",
+            background: beatColourOn ? `${currentBeatColour ?? "#00c8ff"}18` : "transparent",
+            border:     `1px solid ${beatColourOn ? (currentBeatColour ?? "#00c8ff") + "80" : "rgba(60,60,60,0.4)"}`,
+            boxShadow:  beatColourOn ? `0 0 6px ${currentBeatColour ?? "#00c8ff"}44` : "none",
+            fontSize: "clamp(0.55rem,0.85vw,0.72rem)", fontWeight: "bold", letterSpacing: "0.1em",
+            transition: "all 0.3s",
+          }}
+        >
+          <span>BEAT COLOUR</span>
+          <span style={{ opacity: 0.8 }}>{beatColourOn ? "ON" : "OFF"}</span>
+        </button>
+
+        {/* Heart view toggle */}
+        <button
+          onClick={() => setCrossSection(v => !v)}
+          style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "clamp(4px,0.6vh,7px) clamp(8px,1vw,12px)",
+            borderRadius: 4, cursor: "pointer",
+            color:      crossSection ? "rgba(0,255,65,0.85)" : "rgba(210,200,80,0.80)",
+            background: crossSection ? "rgba(0,255,65,0.07)" : "rgba(210,200,80,0.07)",
+            border:     `1px solid ${crossSection ? "rgba(0,255,65,0.35)" : "rgba(210,200,80,0.35)"}`,
+            fontSize: "clamp(0.55rem,0.85vw,0.72rem)", fontWeight: "bold", letterSpacing: "0.1em",
+          }}
+        >
+          <span>HEART VIEW</span>
+          <span style={{ opacity: 0.8 }}>{crossSection ? "CROSS-SECT" : "3D"}</span>
+        </button>
+
+        {/* Reset heart orientation */}
+        <button
+          onClick={() => heartResetRef.current?.()}
+          style={{
+            padding: "clamp(4px,0.6vh,7px) clamp(8px,1vw,12px)",
+            borderRadius: 4, cursor: "pointer", textAlign: "left",
+            color: "rgba(100,180,100,0.75)", background: "rgba(0,40,0,0.45)",
+            border: "1px solid rgba(0,180,0,0.25)",
+            fontSize: "clamp(0.55rem,0.85vw,0.72rem)", fontWeight: "bold", letterSpacing: "0.1em",
+          }}
+        >
+          RESET HEART ROTATION
+        </button>
+
+        <div style={{ fontSize: "clamp(0.5rem,0.8vw,0.7rem)", color: "rgba(255,200,60,0.55)", letterSpacing: "0.18em", fontWeight: "bold", borderBottom: "1px solid rgba(255,200,60,0.12)", paddingBottom: 4 }}>ISCHAEMIA</div>
+
+        {/* Ischaemia zone buttons */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "clamp(3px,0.4vw,5px)" }}>
+          {(['none','anterior','inferior','lateral'] as IschaemiaZone[]).map(z => {
+            const active = ischaemiaZone === z;
+            const label  = z === 'none' ? 'NONE' : z === 'anterior' ? 'LAD (ANT)' : z === 'inferior' ? 'RCA (INF)' : 'LCx (LAT)';
+            return (
+              <button key={z} onClick={() => setIschaemiaZone(z)} style={{
+                fontSize: "clamp(0.5rem,0.78vw,0.67rem)", fontWeight: "bold",
+                padding: "clamp(4px,0.55vh,7px) 0",
+                borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
+                color:      active ? "rgba(255,200,60,0.95)" : "rgba(255,200,60,0.38)",
+                background: active ? "rgba(255,180,0,0.12)"  : "transparent",
+                border:     `1px solid ${active ? "rgba(255,200,60,0.55)" : "rgba(80,80,80,0.2)"}`,
+                boxShadow:  active ? "0 0 5px rgba(255,180,0,0.20)" : "none",
+              }}>{label}</button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+
   // Display helpers
   const hrDisplay  = isVF ? "---" : rhythmType === "AF" ? `~${liveHR}` : String(hr);
   const bpDisplay  = isVF ? "40/25" : `${liveBP.sys}/${liveBP.dia}`;
@@ -404,6 +546,7 @@ export default function Monitor() {
             </div>
           </div>
           {setHrBox()}
+          {hamburgerBtn}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "clamp(2px,0.3vh,4px)", flexShrink: 0 }}>
             <div style={{
               fontSize: "clamp(0.55rem,1vw,0.85rem)", fontWeight: "bold", letterSpacing: "0.15em", padding: "2px 8px", borderRadius: 3,
@@ -429,34 +572,6 @@ export default function Monitor() {
               {currentBeatColour && (
                 <div key={`glow-${beatIndex}`} style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5, boxShadow: `0 0 44px 16px ${currentBeatColour}55, 0 0 90px 36px ${currentBeatColour}22`, animation: "beatPulse 0.70s ease-out forwards" }} />
               )}
-              <button
-                onClick={() => setCrossSection(v => !v)}
-                title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
-                style={{
-                  position: "absolute", top: 4, right: 4, zIndex: 10,
-                  fontSize: 7, fontFamily: "monospace", fontWeight: "bold",
-                  letterSpacing: "0.08em", padding: "2px 4px", borderRadius: 3, cursor: "pointer",
-                  color:      crossSection ? "rgba(0,255,65,0.85)"   : "rgba(210,200,80,0.80)",
-                  background: crossSection ? "rgba(0,255,65,0.07)"   : "rgba(210,200,80,0.07)",
-                  border:    `1px solid ${crossSection ? "rgba(0,255,65,0.35)" : "rgba(210,200,80,0.35)"}`,
-                }}
-              >
-                {crossSection ? "3D" : "SECT"}
-              </button>
-              <button
-                onClick={() => heartResetRef.current?.()}
-                title="Reset heart rotation"
-                style={{
-                  position: "absolute", bottom: 4, right: 4, zIndex: 10,
-                  fontSize: 7, fontFamily: "monospace", fontWeight: "bold",
-                  letterSpacing: "0.08em", padding: "2px 4px", borderRadius: 3, cursor: "pointer",
-                  color:      "rgba(100,180,100,0.75)",
-                  background: "rgba(0,40,0,0.55)",
-                  border:     "1px solid rgba(0,180,0,0.25)",
-                }}
-              >
-                RESET
-              </button>
             </div>
             <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 3 }}>
@@ -487,43 +602,6 @@ export default function Monitor() {
                   );
                 })}
               </div>
-              <div style={{ display: "flex", gap: 3, marginBottom: 3 }}>
-                {soundBtn}
-                <button
-                  onClick={() => setBeatColourOn(v => !v)}
-                  style={{
-                    flex: 1, fontSize: "clamp(0.38rem,0.65vw,0.6rem)", fontWeight: "bold", padding: "3px 0",
-                    borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
-                    color:      beatColourOn ? (currentBeatColour ?? "#00c8ff") : "rgba(100,100,100,0.6)",
-                    background: beatColourOn ? `${currentBeatColour ?? "#00c8ff"}18` : "transparent",
-                    border:     `1px solid ${beatColourOn ? (currentBeatColour ?? "#00c8ff") + "88" : "rgba(60,60,60,0.4)"}`,
-                    boxShadow:  beatColourOn ? `0 0 5px ${currentBeatColour ?? "#00c8ff"}55` : "none",
-                    transition: "all 0.3s",
-                  }}
-                >
-                  BEAT COLOUR {beatColourOn ? "ON" : "OFF"}
-                </button>
-              </div>
-              {/* Ischaemia zone selector */}
-              <div style={{ marginTop: 4 }}>
-                <div style={{ fontSize: "clamp(0.36rem, 0.6vw, 0.56rem)", color: "rgba(255,200,60,0.55)", letterSpacing: "0.08em", fontWeight: "bold", marginBottom: 2 }}>ISCHAEMIA</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 2 }}>
-                  {(['none','anterior','inferior','lateral'] as IschaemiaZone[]).map(z => {
-                    const active = ischaemiaZone === z;
-                    const label  = z === 'none' ? 'NONE' : z === 'anterior' ? 'LAD' : z === 'inferior' ? 'RCA' : 'LCx';
-                    return (
-                      <button key={z} onClick={() => setIschaemiaZone(z)} style={{
-                        fontSize: "clamp(0.38rem, 0.65vw, 0.6rem)", fontWeight: "bold", padding: "2px 0",
-                        borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
-                        color:      active ? "rgba(255,200,60,0.95)" : "rgba(255,200,60,0.38)",
-                        background: active ? "rgba(255,180,0,0.12)"  : "transparent",
-                        border:     `1px solid ${active ? "rgba(255,200,60,0.55)" : "rgba(80,80,80,0.2)"}`,
-                        boxShadow:  active ? "0 0 5px rgba(255,180,0,0.25)" : "none",
-                      }}>{label}</button>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -551,6 +629,7 @@ export default function Monitor() {
           </div>
 
         </div>
+        {menuOverlay}
       </div>
     );
   }
@@ -642,8 +721,10 @@ export default function Monitor() {
           </span>
         </div>
 
-        {/* ── Vital signs + alarm ─────────────────────────────────────────── */}
-        <div className="flex flex-col items-end gap-0.5" style={{ flexShrink: 0 }}>
+        {/* ── Hamburger + Vital signs + alarm ─────────────────────────────── */}
+        <div className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
+        {hamburgerBtn}
+        <div className="flex flex-col items-end gap-0.5">
           <div
             className="text-[9px] font-bold tracking-widest animate-pulse px-1.5 py-0.5 rounded"
             style={{
@@ -677,15 +758,16 @@ export default function Monitor() {
             </div>
           </div>
         </div>
+        </div>
       </header>
 
-      {/* ── Rhythm selector + sound toggle ──────────────────────────────────── */}
+      {/* ── Rhythm selector ─────────────────────────────────────────────────── */}
       <div
         className="px-2 py-1"
         style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
       >
         {/* 2×4 grid so all 8 rhythms fit at 390 px */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 3, marginBottom: 3 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 3 }}>
           {RHYTHM_CONFIGS.map(cfg => {
             const active  = rhythmType === cfg.type;
             const danger  = cfg.isLethal;
@@ -708,43 +790,9 @@ export default function Monitor() {
             );
           })}
         </div>
-
-        {/* Sound + beat-colour toggles */}
-        <div style={{ display: "flex", gap: 3, marginTop: 0 }}>
-          <button
-            data-testid="button-sound-toggle"
-            onClick={() => { unlockAudio(); toggleMute(); }}
-            title={muted ? "Sound off — click to enable" : "Sound on — click to mute"}
-            className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
-            style={{
-              flex: 1, lineHeight: 1.2,
-              color:      muted ? "rgba(100,100,100,0.6)" : "rgba(0,255,65,0.75)",
-              background: muted ? "transparent"           : "rgba(0,255,65,0.06)",
-              border:     `1px solid ${muted ? "rgba(60,60,60,0.4)" : "rgba(0,255,65,0.25)"}`,
-            }}
-          >
-            SOUND {muted ? "OFF" : "ON"}
-          </button>
-          <button
-            data-testid="button-beat-colour-toggle"
-            onClick={() => setBeatColourOn(v => !v)}
-            title={beatColourOn ? "Beat colour on — click to disable" : "Beat colour off — click to enable"}
-            className="text-[8px] font-bold rounded py-0.5 tracking-wider transition-all"
-            style={{
-              flex: 1, lineHeight: 1.2,
-              color:      beatColourOn ? (currentBeatColour ?? "#00c8ff") : "rgba(100,100,100,0.6)",
-              background: beatColourOn ? `${currentBeatColour ?? "#00c8ff"}18` : "transparent",
-              border:     `1px solid ${beatColourOn ? (currentBeatColour ?? "#00c8ff") + "88" : "rgba(60,60,60,0.4)"}`,
-              boxShadow:  beatColourOn ? `0 0 6px ${currentBeatColour ?? "#00c8ff"}55` : "none",
-              transition: "all 0.3s",
-            }}
-          >
-            BEAT COLOUR {beatColourOn ? "ON" : "OFF"}
-          </button>
-        </div>
       </div>
 
-      {/* ── Heart + Educational labels ───────────────────────────────────────── */}
+      {/* ── Heart ───────────────────────────────────────────────────────────── */}
       <div
         className="flex items-center justify-center gap-3 px-3 pt-0.5 pb-0"
         style={{ flexShrink: 0 }}
@@ -758,56 +806,6 @@ export default function Monitor() {
           {currentBeatColour && (
             <div key={`glow-${beatIndex}`} style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 5, boxShadow: `0 0 44px 16px ${currentBeatColour}55, 0 0 90px 36px ${currentBeatColour}22`, animation: "beatPulse 0.70s ease-out forwards" }} />
           )}
-          <button
-            onClick={() => setCrossSection(v => !v)}
-            title={crossSection ? "Switch to 3D view" : "Switch to cross-section view"}
-            style={{
-              position: "absolute", top: 6, right: 6, zIndex: 10,
-              fontSize: 8, fontFamily: "monospace", fontWeight: "bold",
-              letterSpacing: "0.08em", padding: "3px 6px", borderRadius: 3, cursor: "pointer",
-              color:      crossSection ? "rgba(0,255,65,0.85)"   : "rgba(210,200,80,0.80)",
-              background: crossSection ? "rgba(0,255,65,0.07)"   : "rgba(210,200,80,0.07)",
-              border:    `1px solid ${crossSection ? "rgba(0,255,65,0.35)" : "rgba(210,200,80,0.35)"}`,
-            }}
-          >
-            {crossSection ? "3D" : "SECT"}
-          </button>
-          <button
-            onClick={() => heartResetRef.current?.()}
-            title="Reset heart rotation"
-            style={{
-              position: "absolute", bottom: 6, right: 6, zIndex: 10,
-              fontSize: 8, fontFamily: "monospace", fontWeight: "bold",
-              letterSpacing: "0.08em", padding: "3px 6px", borderRadius: 3, cursor: "pointer",
-              color:      "rgba(100,180,100,0.75)",
-              background: "rgba(0,40,0,0.55)",
-              border:     "1px solid rgba(0,180,0,0.25)",
-            }}
-          >
-            RESET
-          </button>
-        </div>
-
-      </div>
-
-      {/* ── Ischaemia zone selector ──────────────────────────────────────────── */}
-      <div className="px-3 pb-0.5" style={{ flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 7, color: "rgba(255,200,60,0.55)", letterSpacing: "0.08em", fontWeight: "bold", whiteSpace: "nowrap" }}>ISCHAEMIA</span>
-          {(['none','anterior','inferior','lateral'] as IschaemiaZone[]).map(z => {
-            const active = ischaemiaZone === z;
-            const label  = z === 'none' ? 'NONE' : z === 'anterior' ? 'LAD' : z === 'inferior' ? 'RCA' : 'LCx';
-            return (
-              <button key={z} onClick={() => setIschaemiaZone(z)} style={{
-                flex: 1, fontSize: 7, fontWeight: "bold", padding: "2px 0",
-                borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
-                color:      active ? "rgba(255,200,60,0.95)" : "rgba(255,200,60,0.38)",
-                background: active ? "rgba(255,180,0,0.12)"  : "transparent",
-                border:     `1px solid ${active ? "rgba(255,200,60,0.55)" : "rgba(80,80,80,0.2)"}`,
-                boxShadow:  active ? "0 0 5px rgba(255,180,0,0.20)" : "none",
-              }}>{label}</button>
-            );
-          })}
         </div>
       </div>
 
@@ -858,6 +856,7 @@ export default function Monitor() {
         </div>
       </div>
     </div>
+    {menuOverlay}
     </div>
 
   );
