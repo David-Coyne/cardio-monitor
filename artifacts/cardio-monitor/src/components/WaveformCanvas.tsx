@@ -121,7 +121,7 @@ export function WaveformCanvas({
       // coordinate on every frame, regardless of when they mounted.
       const sweepFraction = (rawTime % windowMs) / windowMs;
       const writeX        = Math.floor(sweepFraction * width);
-      const eraserW       = Math.max(20, Math.floor(width * 0.06));
+      const eraserW       = 3;
 
       // --- First-pass gate (uses mount time, NOT sweep origin) ---
       // Tracks when this particular canvas first rendered so we can blank the

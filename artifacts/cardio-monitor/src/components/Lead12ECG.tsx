@@ -116,7 +116,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
         const writeX  = Math.floor(sweepFraction * width);
-        const eraserW = Math.max(8, Math.floor(width * 0.06));
+        const eraserW = 3;
         const unwrittenRegionSz = Math.ceil(unwrittenFraction * width);
 
         const shouldSkip = (x: number): boolean => {

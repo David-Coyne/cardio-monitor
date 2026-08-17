@@ -154,7 +154,7 @@ export function Lead3ECG({
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
         const writeX  = Math.floor(sweepFraction * width);
-        const eraserW = Math.max(8, Math.floor(width * 0.04));
+        const eraserW = 3;
         const unwrittenRegionSz = Math.ceil(unwrittenFraction * width);
 
         const shouldSkip = (x: number): boolean => {
