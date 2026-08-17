@@ -40,9 +40,18 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
   const frozenRawTimeRef = useRef<number | null>(null);
   const birthRawTimeRef  = useRef<number | null>(null);
   const beatPaletteRef   = useRef<readonly string[] | null>(beatPalette ?? null);
+  // Refs so HR / ischaemia changes don't restart the sweep
+  const leadsRef         = useRef(leads);
+  const ischaemiaRef     = useRef(ischaemiaZone);
+  const hrRef            = useRef(hr);
+  const colorRef         = useRef(color);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { beatPaletteRef.current = beatPalette ?? null; }, [beatPalette]);
+  useEffect(() => { leadsRef.current = leads; }, [leads]);
+  useEffect(() => { ischaemiaRef.current = ischaemiaZone; }, [ischaemiaZone]);
+  useEffect(() => { hrRef.current = hr; }, [hr]);
+  useEffect(() => { colorRef.current = color; }, [color]);
 
   useEffect(() => {
     birthRawTimeRef.current  = null;
@@ -100,7 +109,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
 
       for (const name of LEAD_GRID) {
         const canvas = canvasRefs.current[name];
-        const data   = leads[name];
+        const data   = leadsRef.current[name];
         if (!canvas || !data || data.length === 0) continue;
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
@@ -111,7 +120,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
 
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
-        const beatSamples        = beatSamplesProp ?? Math.round(data.length / Math.max(1, Math.round(hr * (TOTAL_DURATION / 1000) / 60)));
+        const beatSamples        = beatSamplesProp ?? Math.round(data.length / Math.max(1, Math.round(hrRef.current * (TOTAL_DURATION / 1000) / 60)));
 
         const writeX  = Math.floor(sweepFraction * width);
         const eraserW = Math.max(8, Math.floor(width * 0.06));
@@ -131,11 +140,11 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
           return height - norm * height * 0.8 - height * 0.1;
         };
 
-        const magnitude    = getLeadIschaemiaMagnitude(ischaemiaZone, name);
+        const magnitude    = getLeadIschaemiaMagnitude(ischaemiaRef.current, name);
         const hasIschaemia = Math.abs(magnitude) > 0.05;
         const strokeColor  = hasIschaemia
           ? (magnitude > 0.05 ? "#ffb347" : "#ff5f5f")
-          : color;
+          : colorRef.current;
 
         const pal = beatPaletteRef.current;
 
@@ -222,7 +231,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
       window.removeEventListener("resize", resizeAll);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [leads, ischaemiaZone, color, hr]);
+  }, []);
 
   return (
     <div

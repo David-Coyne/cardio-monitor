@@ -50,11 +50,14 @@ export function WaveformCanvas({
   const activeColorRef   = useRef<string>(beatColor ?? color);
   const beatPaletteRef   = useRef<readonly string[] | null>(beatPalette ?? null);
   const beatSamplesRef   = useRef<number>(beatSamples ?? 0);
+  // Keep data behind a ref so HR changes don't restart the sweep
+  const dataRef          = useRef<number[]>(data);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { activeColorRef.current = beatColor ?? color; }, [beatColor, color]);
   useEffect(() => { beatPaletteRef.current = beatPalette ?? null; }, [beatPalette]);
   useEffect(() => { beatSamplesRef.current = beatSamples ?? 0; }, [beatSamples]);
+  useEffect(() => { dataRef.current = data; }, [data]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -84,7 +87,7 @@ export function WaveformCanvas({
 
     let animationFrameId: number;
 
-    const samplesOnScreen = Math.floor(data.length * (windowSeconds / 15));
+    const samplesOnScreen = Math.floor(dataRef.current.length * (windowSeconds / 15));
     const windowMs = windowSeconds * 1000;
 
     const render = (time: number) => {
@@ -145,13 +148,14 @@ export function WaveformCanvas({
       // suppress unused-var lint for birthX (used conceptually, not in formula)
       void birthX;
 
-      const currentSampleIndex = Math.floor(progress * data.length);
+      const d = dataRef.current;
+      const currentSampleIndex = Math.floor(progress * d.length);
 
       // Maps each canvas x-pixel back to its data-buffer sample position.
       const sampleAt = (x: number): number => {
         const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
-        const idx    = (currentSampleIndex - offset + data.length) % data.length;
-        const val    = data[idx];
+        const idx    = (currentSampleIndex - offset + d.length) % d.length;
+        const val    = d[idx];
         const norm   = (val - minY) / (maxY - minY);
         return height - norm * height * 0.85 - height * 0.075;
       };
@@ -187,7 +191,7 @@ export function WaveformCanvas({
           for (let x = 0; x < width; x++) {
             if (shouldSkip(x)) { flush(x); continue; }
             const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
-            const sIdx   = (currentSampleIndex - offset + data.length) % data.length;
+            const sIdx   = (currentSampleIndex - offset + d.length) % d.length;
             const beatN  = Math.floor(sIdx / bs);
             const col    = pal[((beatN % pal.length) + pal.length) % pal.length];
             if (col !== segColour || segStart < 0) { flush(x); segStart = x; segColour = col; }
@@ -241,7 +245,7 @@ export function WaveformCanvas({
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [data, color, gridColor, minY, maxY, windowSeconds]);
+  }, [color, gridColor, minY, maxY, windowSeconds]);
 
   return (
     <div

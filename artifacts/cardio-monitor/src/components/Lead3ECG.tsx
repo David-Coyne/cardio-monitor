@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MonitorDropdown } from "./MonitorDropdown";
 import {
   generate12LeadSnapshot,
   getLeadIschaemiaMagnitude,
@@ -15,16 +16,26 @@ interface Lead3ECGProps {
   beatSamples?: number;
 }
 
-const LEAD_3: Lead12Name[] = ["I", "II", "III"];
+// ── Preset lead groups ────────────────────────────────────────────────────────
+const PRESETS: { short: string; leads: Lead12Name[] }[] = [
+  { short: "I",     leads: ["I"]                  },
+  { short: "II",    leads: ["II"]                 },
+  { short: "III",   leads: ["III"]                },
+  { short: "aVx",   leads: ["aVR", "aVL", "aVF"] },
+  { short: "V1–3",  leads: ["V1",  "V2",  "V3"]  },
+  { short: "V4–6",  leads: ["V4",  "V5",  "V6"]  },
+  { short: "INF",   leads: ["II",  "III", "aVF"] },
+  { short: "LAT",   leads: ["I",   "aVL", "V5"]  },
+];
 
 const ZONE_LABEL: Record<Exclude<IschaemiaZone, "none">, string> = {
-  anterior: "ANTERIOR STEMI · LAD",
-  inferior: "INFERIOR STEMI · RCA",
-  lateral:  "LATERAL STEMI · LCx",
+  anterior: "ANT · LAD",
+  inferior: "INF · RCA",
+  lateral:  "LAT · LCx",
 };
 
 const TOTAL_DURATION = 15000;
-const WINDOW_SECONDS  = 5.0;   // wider per-lead window vs. 12-lead (3.4 s)
+const WINDOW_SECONDS  = 5.0;
 const MIN_Y = -1.6;
 const MAX_Y =  1.6;
 
@@ -41,16 +52,48 @@ export function Lead3ECG({
     [hr, ischaemiaZone],
   );
 
+  const [presetIdx, setPresetIdx] = useState(0);
+  const activeLeads = PRESETS[presetIdx].leads;
+
   const canvasRefs       = useRef<Partial<Record<Lead12Name, HTMLCanvasElement | null>>>({});
   const pausedRef        = useRef(paused);
   const frozenAtRef      = useRef<number | null>(null);
   const frozenRawTimeRef = useRef<number | null>(null);
   const birthRawTimeRef  = useRef<number | null>(null);
   const beatPaletteRef   = useRef<readonly string[] | null>(beatPalette ?? null);
+  // Live-update refs — changes here never restart the sweep
+  const leadsRef         = useRef(leads);
+  const ischaemiaRef     = useRef(ischaemiaZone);
+  const hrRef            = useRef(hr);
+  const colorRef         = useRef(color);
+  const activeLeadsRef   = useRef(activeLeads);
 
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
-  useEffect(() => { beatPaletteRef.current = beatPalette ?? null; }, [beatPalette]);
+  useEffect(() => { pausedRef.current       = paused;           }, [paused]);
+  useEffect(() => { beatPaletteRef.current  = beatPalette ?? null; }, [beatPalette]);
+  useEffect(() => { leadsRef.current        = leads;            }, [leads]);
+  useEffect(() => { ischaemiaRef.current    = ischaemiaZone;   }, [ischaemiaZone]);
+  useEffect(() => { hrRef.current           = hr;              }, [hr]);
+  useEffect(() => { colorRef.current        = color;           }, [color]);
+  useEffect(() => { activeLeadsRef.current  = activeLeads;     }, [activeLeads]);
 
+  // When preset changes, wait one rAF for React to mount the new canvases, then size them
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const dpr = window.devicePixelRatio || 1;
+      for (const name of activeLeadsRef.current) {
+        const canvas = canvasRefs.current[name];
+        if (!canvas) continue;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          canvas.width  = Math.round(rect.width  * dpr);
+          canvas.height = Math.round(rect.height * dpr);
+        }
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [presetIdx]);
+
+  // ── Single long-lived animation loop ─────────────────────────────────────────
   useEffect(() => {
     birthRawTimeRef.current  = null;
     frozenAtRef.current      = null;
@@ -60,12 +103,12 @@ export function Lead3ECG({
 
     const resizeAll = () => {
       const dpr = window.devicePixelRatio || 1;
-      for (const name of LEAD_3) {
+      for (const name of activeLeadsRef.current) {
         const canvas = canvasRefs.current[name];
         if (!canvas) continue;
         const rect = canvas.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          canvas.width  = Math.round(rect.width * dpr);
+          canvas.width  = Math.round(rect.width  * dpr);
           canvas.height = Math.round(rect.height * dpr);
         }
       }
@@ -95,18 +138,17 @@ export function Lead3ECG({
 
       if (birthRawTimeRef.current === null) birthRawTimeRef.current = rawTime;
       const birthRawTime = birthRawTimeRef.current;
-
-      const progress = elapsed / TOTAL_DURATION;
+      const progress     = elapsed / TOTAL_DURATION;
 
       const sweepFraction     = ((rawTime - birthRawTime) % windowMs) / windowMs;
       const elapsedSinceBirth = rawTime - birthRawTime;
       const firstPassComplete = elapsedSinceBirth >= windowMs;
       const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceBirth / windowMs);
 
-      for (const name of LEAD_3) {
+      for (const name of activeLeadsRef.current) {
         const canvas = canvasRefs.current[name];
-        const data   = leads[name];
-        if (!canvas || !data || data.length === 0) continue;
+        const data   = leadsRef.current[name];
+        if (!canvas || !data || data.length === 0 || canvas.width === 0) continue;
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
 
@@ -116,7 +158,7 @@ export function Lead3ECG({
 
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
-        const beatSamples        = beatSamplesProp ?? Math.round(data.length / Math.max(1, Math.round(hr * (TOTAL_DURATION / 1000) / 60)));
+        const beatSamples        = beatSamplesProp ?? Math.round(data.length / Math.max(1, Math.round(hrRef.current * (TOTAL_DURATION / 1000) / 60)));
 
         const writeX  = Math.floor(sweepFraction * width);
         const eraserW = Math.max(8, Math.floor(width * 0.04));
@@ -136,16 +178,15 @@ export function Lead3ECG({
           return height - norm * height * 0.8 - height * 0.1;
         };
 
-        const magnitude    = getLeadIschaemiaMagnitude(ischaemiaZone, name);
+        const magnitude    = getLeadIschaemiaMagnitude(ischaemiaRef.current, name);
         const hasIschaemia = Math.abs(magnitude) > 0.05;
         const strokeColor  = hasIschaemia
           ? (magnitude > 0.05 ? "#ffb347" : "#ff5f5f")
-          : color;
+          : colorRef.current;
 
         const pal = beatPaletteRef.current;
 
         if (pal && pal.length > 0 && !hasIschaemia) {
-          // Per-beat colouring
           const drawBeatColoured = (alpha: number, lw: number) => {
             let segStart  = -1;
             let segColour = "";
@@ -184,7 +225,6 @@ export function Lead3ECG({
           drawBeatColoured(1.0,  1.4);
 
         } else {
-          // Single-colour draw
           const drawSingleColour = (alpha: number, lw: number) => {
             ctx.save();
             ctx.strokeStyle = strokeColor;
@@ -227,28 +267,44 @@ export function Lead3ECG({
       window.removeEventListener("resize", resizeAll);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [leads, ischaemiaZone, color, hr]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div
       className="relative flex flex-col h-full w-full rounded overflow-hidden"
       style={{ border: "1px solid rgba(0,80,0,0.25)", background: "#050a05" }}
       data-testid="lead3-ecg"
     >
-      <div className="flex items-center justify-between px-2 pt-1" style={{ flexShrink: 0 }}>
+      {/* Header: title · segmented toggle · ischaemia badge */}
+      <div
+        className="flex items-center gap-2 px-2 pt-1 pb-0.5"
+        style={{ flexShrink: 0 }}
+      >
         <span
           className="font-mono font-bold tracking-widest"
-          style={{ color, fontSize: "clamp(0.5rem, 0.9vw, 0.75rem)" }}
+          style={{ color, fontSize: "clamp(0.46rem, 0.82vw, 0.7rem)", flexShrink: 0 }}
         >
-          3-LEAD ECG
+          3-LEAD
         </span>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <MonitorDropdown
+            options={PRESETS.map((p, i) => ({ value: String(i), label: p.short }))}
+            value={String(presetIdx)}
+            onChange={v => setPresetIdx(Number(v))}
+            color={color}
+          />
+        </div>
+
         {ischaemiaZone !== "none" && (
           <span
             className="font-mono font-bold"
             style={{
               color: "rgba(255,190,60,0.9)",
-              fontSize: "clamp(0.4rem, 0.72vw, 0.6rem)",
+              fontSize: "clamp(0.37rem, 0.62vw, 0.54rem)",
               letterSpacing: "0.04em",
+              flexShrink: 0,
             }}
           >
             {ZONE_LABEL[ischaemiaZone]}
@@ -256,21 +312,19 @@ export function Lead3ECG({
         )}
       </div>
 
-      {/* 1 column × 3 rows — each lead gets 1/3 of the height */}
+      {/* 1 column × N rows — 1 row for single-lead presets, 3 for groups */}
       <div
         className="grid flex-1 gap-px p-1"
         style={{
           gridTemplateColumns: "1fr",
-          gridTemplateRows: "repeat(3, 1fr)",
+          gridTemplateRows: `repeat(${activeLeads.length}, 1fr)`,
           minHeight: 0,
         }}
       >
-        {LEAD_3.map((name) => {
-          const mag    = getLeadIschaemiaMagnitude(ischaemiaZone, name);
-          const hasIsc = Math.abs(mag) > 0.05;
-          const labelColor = hasIsc
-            ? (mag > 0.05 ? "#ffb347" : "#ff5f5f")
-            : color;
+        {activeLeads.map((name) => {
+          const mag      = getLeadIschaemiaMagnitude(ischaemiaZone, name);
+          const hasIsc   = Math.abs(mag) > 0.05;
+          const labelCol = hasIsc ? (mag > 0.05 ? "#ffb347" : "#ff5f5f") : color;
           return (
             <div
               key={name}
@@ -282,7 +336,7 @@ export function Lead3ECG({
             >
               <span
                 className="absolute top-0.5 left-1 z-10 font-mono font-bold"
-                style={{ color: labelColor, fontSize: "clamp(0.55rem, 0.9vw, 0.8rem)", lineHeight: 1.2 }}
+                style={{ color: labelCol, fontSize: "clamp(0.52rem, 0.88vw, 0.78rem)", lineHeight: 1.2 }}
               >
                 {name}
               </span>

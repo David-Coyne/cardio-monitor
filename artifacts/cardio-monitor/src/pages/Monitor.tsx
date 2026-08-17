@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { WaveformCanvas } from "@/components/WaveformCanvas";
 import { HeartGLB } from "@/components/HeartGLB";
 import { Lead3ECG } from "@/components/Lead3ECG";
+import { MonitorDropdown } from "@/components/MonitorDropdown";
 import { Lead12ECG } from "@/components/Lead12ECG";
 import {
   type RhythmType,
@@ -282,19 +283,27 @@ export default function Monitor() {
         transition: "all 0.15s",
       }}
     >
-      {[0,1,2].map(i => (
-        <span key={i} style={{
-          display: "block",
-          width: "clamp(11px,1.4vw,16px)", height: 2,
-          background: menuOpen ? "#00ff41" : "rgba(180,180,180,0.7)",
-          borderRadius: 1,
-          transition: "all 0.15s",
-          transform: menuOpen
-            ? (i === 0 ? "translateY(4px) rotate(45deg)" : i === 2 ? "translateY(-4px) rotate(-45deg)" : "scaleX(0)")
-            : "none",
-          transformOrigin: "center",
-        }} />
-      ))}
+      <svg
+        width="16" height="16" viewBox="0 0 16 16"
+        style={{ transition: "opacity 0.15s", flexShrink: 0 }}
+        fill="none" stroke={menuOpen ? "#00ff41" : "rgba(180,180,180,0.75)"}
+        strokeWidth="1.8" strokeLinecap="round"
+      >
+        {menuOpen ? (
+          /* Clean ✕ */
+          <>
+            <line x1="3" y1="3" x2="13" y2="13" />
+            <line x1="13" y1="3" x2="3" y2="13" />
+          </>
+        ) : (
+          /* ☰ three lines */
+          <>
+            <line x1="2" y1="4.5" x2="14" y2="4.5" />
+            <line x1="2" y1="8"   x2="14" y2="8"   />
+            <line x1="2" y1="11.5" x2="14" y2="11.5" />
+          </>
+        )}
+      </svg>
     </button>
   );
 
@@ -307,7 +316,7 @@ export default function Monitor() {
       />
       {/* Panel */}
       <div style={{
-        position: "fixed", top: "clamp(44px,6vh,64px)", right: "clamp(8px,1.5vw,20px)",
+        position: "fixed", top: "clamp(60px,9vh,88px)", left: "clamp(8px,1.5vw,20px)",
         zIndex: 50, background: "#0b1812", border: "1px solid rgba(0,255,65,0.25)",
         borderRadius: 6, padding: "clamp(10px,1.5vw,16px)", minWidth: "clamp(180px,22vw,240px)",
         boxShadow: "0 8px 32px rgba(0,0,0,0.7)", fontFamily: "monospace",
@@ -436,34 +445,11 @@ export default function Monitor() {
 
   // ── Shared sub-elements ─────────────────────────────────────────────────────
 
-  const rhythmButtons = RHYTHM_CONFIGS.map(cfg => {
-    const active = rhythmType === cfg.type;
-    const danger = cfg.isLethal;
-    const col    = danger ? "#ff5555" : "#00ff41";
-    return (
-      <button
-        key={cfg.type}
-        data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
-        onClick={() => handleRhythmChange(cfg.type)}
-        style={{
-          flex: 1,
-          fontSize: "clamp(0.5rem, 1vw, 0.8rem)",
-          fontWeight: "bold",
-          padding: "3px 0",
-          borderRadius: "3px",
-          letterSpacing: "0.05em",
-          cursor: "pointer",
-          transition: "all 0.15s",
-          color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
-          background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
-          border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
-          boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
-        }}
-      >
-        {cfg.label}
-      </button>
-    );
-  });
+  const rhythmOptions = RHYTHM_CONFIGS.map(cfg => ({
+    value:  cfg.type,
+    label:  `${cfg.label} — ${cfg.fullName}`,
+    danger: cfg.isLethal,
+  }));
 
   const soundBtn = (
     <button
@@ -516,27 +502,24 @@ export default function Monitor() {
     </div>
   );
 
-  // ── Shared pause / play overlay (position:fixed — works in both layouts) ──────
+  // ── Pause / play button — placed under the heart animation ─────────────────
   const pauseBtn = (
     <button
       onClick={() => setPaused(p => !p)}
       aria-label={paused ? "Resume" : "Pause"}
       style={{
-        position:       "absolute",
-        bottom:         7,
-        left:           7,
-        width:          30,
-        height:         30,
+        width:          34,
+        height:         34,
         borderRadius:   "50%",
-        background:     "rgba(0,0,0,0.60)",
-        border:         `1px solid ${paused ? "#00ff41" : "rgba(0,255,65,0.30)"}`,
-        color:          paused ? "#00ff41" : "rgba(255,255,255,0.45)",
-        fontSize:       13,
+        background:     "rgba(0,0,0,0.55)",
+        border:         `1px solid ${paused ? "#00ff41" : "rgba(0,255,65,0.35)"}`,
+        color:          paused ? "#00ff41" : "rgba(255,255,255,0.50)",
+        fontSize:       14,
         display:        "flex",
         alignItems:     "center",
         justifyContent: "center",
         cursor:         "pointer",
-        zIndex:         10,
+        flexShrink:     0,
         boxShadow:      paused ? "0 0 8px rgba(0,255,65,0.30)" : "none",
         transition:     "border-color 0.15s, color 0.15s, box-shadow 0.15s",
         backdropFilter: "blur(3px)",
@@ -561,7 +544,7 @@ export default function Monitor() {
       <div data-testid="monitor-root" style={{ width: "100vw", height: "100dvh", display: "flex", flexDirection: "column", background: "#080c10", color: "white", fontFamily: "monospace", userSelect: "none", overflow: "hidden" }}>
 
         {/* ── Header ─────────────────────────────────────────────────────────── */}
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "clamp(4px,0.6vh,8px) clamp(12px,1.5vw,24px)", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: "clamp(8px,1.5vw,20px)" }}>
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "clamp(4px,0.6vh,8px) clamp(12px,1.5vw,24px)", borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`, flexShrink: 0, gap: "clamp(8px,1.5vw,20px)", position: "relative", zIndex: 2 }}>
           {hamburgerBtn}
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
             <div style={{ fontSize: "clamp(0.7rem,1.4vw,1.5rem)", fontWeight: "bold", letterSpacing: "0.12em", color: isLethal ? "#ff4040" : "#00ff41", wordBreak: "break-word" }}>
@@ -595,35 +578,18 @@ export default function Monitor() {
                 <div key={`glow-${beatIndex}`} style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5, boxShadow: `0 0 44px 16px ${currentBeatColour}55, 0 0 90px 36px ${currentBeatColour}22`, animation: "beatPulse 0.70s ease-out forwards" }} />
               )}
             </div>
+            {/* Pause button centred under heart */}
+            <div style={{ display: "flex", justifyContent: "center", padding: "5px 0", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
+              {pauseBtn}
+            </div>
             <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 3 }}>
-                {RHYTHM_CONFIGS.map(cfg => {
-                  const active = rhythmType === cfg.type;
-                  const danger = cfg.isLethal;
-                  const col    = danger ? "#ff5555" : "#00ff41";
-                  return (
-                    <button
-                      key={cfg.type}
-                      data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
-                      onClick={() => handleRhythmChange(cfg.type)}
-                      style={{
-                        fontSize: "clamp(0.42rem, 0.75vw, 0.7rem)",
-                        fontWeight: "bold",
-                        padding: "3px 0",
-                        borderRadius: 3,
-                        letterSpacing: "0.04em",
-                        cursor: "pointer",
-                        color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
-                        background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
-                        border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
-                        boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
-                      }}
-                    >
-                      {cfg.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <MonitorDropdown
+                options={rhythmOptions}
+                value={rhythmType}
+                onChange={v => handleRhythmChange(v as RhythmType)}
+                color={isLethal ? "#ff5555" : "#00ff41"}
+                openUp
+              />
             </div>
           </div>
 
@@ -636,7 +602,6 @@ export default function Monitor() {
                 ) : (
                   <Lead3ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
                 )}
-                {pauseBtn}
               </div>
               <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 <WaveformCanvas data={abpData} color="#ff4444" beatColor={currentBeatColour} beatPalette={beatColourOn ? BEAT_PALETTE : null} beatSamples={beatSamples} label="ABP" value={bpDisplay} unit={`(${mapDisplay})`} minY={rhythmCfg.abpMinY} maxY={rhythmCfg.abpMaxY} windowSeconds={6} labelFontSize="clamp(0.6rem,0.85vw,0.9rem)" valueFontSize="clamp(0.9rem,2vw,1.8rem)" unitFontSize="clamp(0.45rem,0.7vw,0.7rem)" paused={paused} />
@@ -671,6 +636,8 @@ export default function Monitor() {
         style={{
           borderBottom: `1px solid ${isLethal ? "rgba(255,60,60,0.4)" : "#0d2a0d"}`,
           flexShrink: 0,
+          position: "relative",
+          zIndex: 2,
         }}
       >
         {hamburgerBtn}
@@ -786,35 +753,17 @@ export default function Monitor() {
         className="px-2 py-1"
         style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
       >
-        {/* 2×4 grid so all 8 rhythms fit at 390 px */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 3 }}>
-          {RHYTHM_CONFIGS.map(cfg => {
-            const active  = rhythmType === cfg.type;
-            const danger  = cfg.isLethal;
-            const col     = danger ? "#ff5555" : "#00ff41";
-            return (
-              <button
-                key={cfg.type}
-                data-testid={`button-rhythm-${cfg.type.toLowerCase()}`}
-                onClick={() => handleRhythmChange(cfg.type)}
-                className="text-[9px] font-bold py-0.5 rounded tracking-wider transition-all"
-                style={{
-                  color:      active ? (danger ? "#ff2020" : "#00ff41") : (danger ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)"),
-                  background: active ? (danger ? "rgba(255,32,32,0.12)" : "rgba(0,255,65,0.10)") : "transparent",
-                  border:     `1px solid ${active ? col : "rgba(80,80,80,0.2)"}`,
-                  boxShadow:  active && danger ? "0 0 6px rgba(255,32,32,0.3)" : "none",
-                }}
-              >
-                {cfg.label}
-              </button>
-            );
-          })}
-        </div>
+        <MonitorDropdown
+          options={rhythmOptions}
+          value={rhythmType}
+          onChange={v => handleRhythmChange(v as RhythmType)}
+          color={isLethal ? "#ff5555" : "#00ff41"}
+        />
       </div>
 
       {/* ── Heart ───────────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center justify-center gap-3 px-3 pt-0.5 pb-0"
+        className="flex flex-col items-center px-3 pt-0.5 pb-0"
         style={{ flexShrink: 0 }}
       >
         <div
@@ -827,6 +776,10 @@ export default function Monitor() {
             <div key={`glow-${beatIndex}`} style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 5, boxShadow: `0 0 44px 16px ${currentBeatColour}55, 0 0 90px 36px ${currentBeatColour}22`, animation: "beatPulse 0.70s ease-out forwards" }} />
           )}
         </div>
+        {/* Pause button centred under heart */}
+        <div style={{ paddingTop: 5 }}>
+          {pauseBtn}
+        </div>
       </div>
 
       {/* ── Waveform panels ─────────────────────────────────────────────────── */}
@@ -837,7 +790,6 @@ export default function Monitor() {
           ) : (
             <Lead3ECG hr={hr} ischaemiaZone={ischaemiaZone} color={isLethal ? "#ff4040" : "#00ff41"} paused={paused} beatPalette={isLethal ? null : (beatColourOn ? BEAT_PALETTE : null)} beatSamples={beatSamples} />
           )}
-          {pauseBtn}
         </div>
         <div className="flex-1 min-h-0" style={{ position: "relative" }}>
           <WaveformCanvas
