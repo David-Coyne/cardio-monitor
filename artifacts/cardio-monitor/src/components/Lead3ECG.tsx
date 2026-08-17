@@ -33,7 +33,7 @@ const ZONE_LABEL: Record<Exclude<IschaemiaZone, "none">, string> = {
 };
 
 const TOTAL_DURATION = 15000;
-const WINDOW_SECONDS  = 5.0;
+const WINDOW_SECONDS  = 6.0;
 const MIN_Y = -1.6;
 const MAX_Y =  1.6;
 
