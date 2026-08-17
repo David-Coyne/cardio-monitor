@@ -43,7 +43,7 @@ function getBeatStrength(now: number, heartRate: number, rhythmType: RhythmType)
   // Derive beat phase from the same 15-second data-buffer time base used by the
   // canvas renderers.  This keeps the heart animation sample-locked with the ECG
   // and ABP sweeps regardless of HR or how long the page has been running.
-  const bs     = SAMPLES / heartRate * 60; // samples per beat = 3600 / HR
+  const bs     = 3600 / heartRate; // samples per beat: (SAMPLES/LOOP_S) * (60/HR) = 60*60/HR
   const sample = (now % LOOP_MS) / LOOP_MS * SAMPLES;
 
   let phase: number;
