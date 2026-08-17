@@ -537,7 +537,10 @@ export default function Monitor() {
               {pauseBtn}
             </div>
             <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
-              <div style={{ maxWidth: "13rem" }}>
+              <div style={{ maxWidth: "13rem", display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontFamily: "monospace", fontWeight: "bold", letterSpacing: "0.12em", fontSize: "clamp(0.34rem, 0.55vw, 0.48rem)", color: isLethal ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)" }}>
+                  RHYTHM
+                </span>
                 <MonitorDropdown
                   options={rhythmOptions}
                   value={rhythmType}
@@ -703,7 +706,10 @@ export default function Monitor() {
         className="px-2 py-1"
         style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
       >
-        <div style={{ maxWidth: "16rem" }}>
+        <div style={{ maxWidth: "16rem", display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontFamily: "monospace", fontWeight: "bold", letterSpacing: "0.12em", fontSize: "clamp(0.34rem, 0.55vw, 0.48rem)", color: isLethal ? "rgba(255,85,85,0.5)" : "rgba(0,255,65,0.45)" }}>
+            RHYTHM
+          </span>
           <MonitorDropdown
             options={rhythmOptions}
             value={rhythmType}

@@ -240,25 +240,26 @@ export function Lead3ECG({
       style={{ border: "1px solid rgba(0,80,0,0.25)", background: "#050a05" }}
       data-testid="lead3-ecg"
     >
-      {/* Header: title · segmented toggle · ischaemia badge */}
+      {/* Header: title · lead dropdown · ischaemia badge */}
       <div
         className="flex items-center gap-2 px-2 pt-1 pb-0.5"
         style={{ flexShrink: 0 }}
       >
-        <span
-          className="font-mono font-bold tracking-widest"
-          style={{ color, fontSize: "clamp(0.46rem, 0.82vw, 0.7rem)", flexShrink: 0 }}
-        >
-          3-LEAD
-        </span>
-
-        <div style={{ width: "clamp(3rem, 6vw, 5rem)", flexShrink: 0 }}>
-          <MonitorDropdown
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
+          <span
+            className="font-mono font-bold tracking-widest"
+            style={{ color: `${color}70`, fontSize: "clamp(0.34rem, 0.55vw, 0.48rem)", letterSpacing: "0.12em" }}
+          >
+            LEAD VIEW
+          </span>
+          <div style={{ width: "clamp(3rem, 6vw, 5rem)" }}>
+            <MonitorDropdown
             options={PRESETS.map((p, i) => ({ value: String(i), label: p.short }))}
             value={String(presetIdx)}
             onChange={v => setPresetIdx(Number(v))}
             color={color}
-          />
+            />
+          </div>
         </div>
 
         {ischaemiaZone !== "none" && (
