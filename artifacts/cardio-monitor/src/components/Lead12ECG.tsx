@@ -36,7 +36,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
   const pausedRef        = useRef(paused);
   const frozenAtRef      = useRef<number | null>(null);
   const frozenRawTimeRef = useRef<number | null>(null);
-  const birthRawTimeRef  = useRef<number | null>(null);
+  const mountTimeRef     = useRef<number | null>(null);
   // Refs so HR / ischaemia changes don't restart the sweep
   const leadsRef         = useRef(leads);
   const ischaemiaRef     = useRef(ischaemiaZone);
@@ -50,7 +50,7 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
   useEffect(() => { colorRef.current = color; }, [color]);
 
   useEffect(() => {
-    birthRawTimeRef.current  = null;
+    mountTimeRef.current     = null;
     frozenAtRef.current      = null;
     frozenRawTimeRef.current = null;
 
@@ -92,16 +92,15 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
         rawTime  = time;
       }
 
-      if (birthRawTimeRef.current === null) birthRawTimeRef.current = rawTime;
-      const birthRawTime = birthRawTimeRef.current;
-
       const progress = elapsed / TOTAL_DURATION;
 
-      // Sweep position shared across all lead cells — they all stay in sync
-      const sweepFraction     = ((rawTime - birthRawTime) % windowMs) / windowMs;
-      const elapsedSinceBirth = rawTime - birthRawTime;
-      const firstPassComplete = elapsedSinceBirth >= windowMs;
-      const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceBirth / windowMs);
+      // Absolute sweep phase — shared with WaveformCanvas so all waveform channels
+      // have their write heads at the same x position on every frame.
+      const sweepFraction     = (rawTime % windowMs) / windowMs;
+      if (mountTimeRef.current === null) mountTimeRef.current = rawTime;
+      const elapsedSinceMount = rawTime - mountTimeRef.current;
+      const firstPassComplete = elapsedSinceMount >= windowMs;
+      const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceMount / windowMs);
 
       for (const name of LEAD_GRID) {
         const canvas = canvasRefs.current[name];

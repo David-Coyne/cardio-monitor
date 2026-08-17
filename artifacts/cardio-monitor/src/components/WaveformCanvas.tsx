@@ -40,12 +40,22 @@ export function WaveformCanvas({
   const pausedRef        = useRef(paused);
   const frozenAtRef      = useRef<number | null>(null);  // elapsed (data loop)
   const frozenRawTimeRef = useRef<number | null>(null);  // raw rAF time (sweep)
-  const birthRawTimeRef  = useRef<number | null>(null);  // raw time on first frame
-  // Keep data behind a ref so HR changes don't restart the sweep
-  const dataRef          = useRef<number[]>(data);
+  const mountTimeRef     = useRef<number | null>(null);  // first-frame time (first-pass gate only)
 
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
-  useEffect(() => { dataRef.current = data; }, [data]);
+  // Keep data/style behind refs so changes never restart the sweep loop.
+  const dataRef  = useRef<number[]>(data);
+  const colorRef = useRef(color);
+  const minYRef  = useRef(minY);
+  const maxYRef  = useRef(maxY);
+
+  useEffect(() => { pausedRef.current = paused;  }, [paused]);
+  useEffect(() => { dataRef.current   = data;    }, [data]);
+  useEffect(() => { colorRef.current  = color;   }, [color]);
+  useEffect(() => { minYRef.current   = minY;    }, [minY]);
+  useEffect(() => { maxYRef.current   = maxY;    }, [maxY]);
+
+  // Suppress unused-variable lint for gridColor (kept for API compat, no grid drawn)
+  void gridColor;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -54,8 +64,8 @@ export function WaveformCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Reset birth time whenever the effect re-runs (data change etc.)
-    birthRawTimeRef.current  = null;
+    // Reset mount time and freeze state when the effect re-runs (windowSeconds change).
+    mountTimeRef.current     = null;
     frozenAtRef.current      = null;
     frozenRawTimeRef.current = null;
 
@@ -75,15 +85,13 @@ export function WaveformCanvas({
 
     let animationFrameId: number;
 
-    const samplesOnScreen = Math.floor(dataRef.current.length * (windowSeconds / 15));
+    const samplesOnScreen = Math.floor(data.length * (windowSeconds / 15));
     const windowMs = windowSeconds * 1000;
 
     const render = (time: number) => {
       // --- Separate data-loop time (elapsed) from sweep time (rawTime) ---
       // elapsed:  used for the 15-second data buffer (loops every TOTAL_DURATION)
-      // rawTime:  used for the sweep position (monotonically increasing, wraps every windowMs)
-      //           Using raw rAF time prevents the jump-back glitch that happens when the
-      //           15-second data loop resets while the sweep is mid-screen.
+      // rawTime:  used for the sweep position (monotonically increasing)
       let elapsed: number;
       let rawTime: number;
 
@@ -101,30 +109,28 @@ export function WaveformCanvas({
         rawTime = time;
       }
 
-      // Record the very first frame's raw time so we know where the write head started.
-      if (birthRawTimeRef.current === null) birthRawTimeRef.current = rawTime;
-      const birthRawTime = birthRawTimeRef.current;
-
       const progress = elapsed / TOTAL_DURATION;
 
       const width  = canvas.width;
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
-      // === Sweeping write-head (left → right, wraps every windowSeconds) ===
-      const sweepFraction = ((rawTime - birthRawTime) % windowMs) / windowMs;
+      // === Sweeping write-head — absolute phase so all canvases share the same position ===
+      // Using rawTime % windowMs (not relative to this canvas's birth time) means ECG,
+      // ABP, and any other WaveformCanvas always have their write heads at the same x
+      // coordinate on every frame, regardless of when they mounted.
+      const sweepFraction = (rawTime % windowMs) / windowMs;
       const writeX        = Math.floor(sweepFraction * width);
       const eraserW       = Math.max(20, Math.floor(width * 0.06));
 
-      // --- First-pass gate ---
-      // Until the write head has completed one full lap since birth, pixels ahead of
-      // where the write head has reached are left blank (no prepopulation).
-      const elapsedSinceBirth  = rawTime - birthRawTime;
-      const firstPassComplete  = elapsedSinceBirth >= windowMs;
-      const birthX             = Math.floor(((birthRawTime % windowMs) / windowMs) * width);
-      // Fraction of the screen that remains unwritten on the first pass.
-      const unwrittenFraction  = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceBirth / windowMs);
-      const unwrittenRegionSz  = Math.ceil(unwrittenFraction * width);
+      // --- First-pass gate (uses mount time, NOT sweep origin) ---
+      // Tracks when this particular canvas first rendered so we can blank the
+      // region ahead of the write head on the very first pass.
+      if (mountTimeRef.current === null) mountTimeRef.current = rawTime;
+      const elapsedSinceMount = rawTime - mountTimeRef.current;
+      const firstPassComplete = elapsedSinceMount >= windowMs;
+      const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceMount / windowMs);
+      const unwrittenRegionSz = Math.ceil(unwrittenFraction * width);
 
       // true → this pixel should not be drawn (eraser gap OR not yet reached on first pass)
       const shouldSkip = (x: number): boolean => {
@@ -133,20 +139,18 @@ export function WaveformCanvas({
         return false;
       };
 
-      // suppress unused-var lint for birthX (used conceptually, not in formula)
-      void birthX;
-
       const d = dataRef.current;
       const currentSampleIndex = Math.floor(progress * d.length);
 
       // Sample-by-sample rendering with quadratic bezier smoothing.
-      // Avoids the staircase effect that occurs when samplesOnScreen < canvas width
-      // (the old pixel loop assigned multiple pixels to the same sample → flat steps).
       const pixPerSample = width / samplesOnScreen;
 
       const drawSmooth = (alpha: number, lw: number) => {
         const runs: { x: number; y: number }[][] = [];
         let run:    { x: number; y: number }[]   = [];
+
+        const cMin = minYRef.current;
+        const cMax = maxYRef.current;
 
         for (let s = 0; s < samplesOnScreen; s++) {
           const sOffset = samplesOnScreen - 1 - s;
@@ -164,14 +168,14 @@ export function WaveformCanvas({
           }
 
           const idx  = (currentSampleIndex - sOffset + d.length) % d.length;
-          const norm = (d[idx] - minY) / (maxY - minY);
+          const norm = (d[idx] - cMin) / (cMax - cMin);
           const y    = height - norm * height * 0.85 - height * 0.075;
           run.push({ x, y });
         }
         if (run.length > 0) runs.push(run);
 
         ctx.save();
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = colorRef.current;
         ctx.globalAlpha = alpha;
         ctx.lineWidth   = lw;
         ctx.lineJoin    = 'round';
@@ -204,7 +208,7 @@ export function WaveformCanvas({
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [color, gridColor, minY, maxY, windowSeconds]);
+  }, [windowSeconds]); // color/minY/maxY/data changes are handled via refs — no sweep restart needed
 
   return (
     <div

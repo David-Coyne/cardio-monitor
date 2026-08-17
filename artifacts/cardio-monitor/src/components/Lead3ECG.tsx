@@ -55,7 +55,7 @@ export function Lead3ECG({
   const pausedRef        = useRef(paused);
   const frozenAtRef      = useRef<number | null>(null);
   const frozenRawTimeRef = useRef<number | null>(null);
-  const birthRawTimeRef  = useRef<number | null>(null);
+  const mountTimeRef     = useRef<number | null>(null);
   // Live-update refs — changes here never restart the sweep
   const leadsRef         = useRef(leads);
   const ischaemiaRef     = useRef(ischaemiaZone);
@@ -89,7 +89,7 @@ export function Lead3ECG({
 
   // ── Single long-lived animation loop ─────────────────────────────────────────
   useEffect(() => {
-    birthRawTimeRef.current  = null;
+    mountTimeRef.current     = null;
     frozenAtRef.current      = null;
     frozenRawTimeRef.current = null;
 
@@ -130,14 +130,15 @@ export function Lead3ECG({
         rawTime = time;
       }
 
-      if (birthRawTimeRef.current === null) birthRawTimeRef.current = rawTime;
-      const birthRawTime = birthRawTimeRef.current;
-      const progress     = elapsed / TOTAL_DURATION;
+      const progress = elapsed / TOTAL_DURATION;
 
-      const sweepFraction     = ((rawTime - birthRawTime) % windowMs) / windowMs;
-      const elapsedSinceBirth = rawTime - birthRawTime;
-      const firstPassComplete = elapsedSinceBirth >= windowMs;
-      const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceBirth / windowMs);
+      // Absolute sweep phase — all canvases use rawTime % windowMs so their write
+      // heads are always at the same x position regardless of mount order or timing.
+      const sweepFraction     = (rawTime % windowMs) / windowMs;
+      if (mountTimeRef.current === null) mountTimeRef.current = rawTime;
+      const elapsedSinceMount = rawTime - mountTimeRef.current;
+      const firstPassComplete = elapsedSinceMount >= windowMs;
+      const unwrittenFraction = firstPassComplete ? 0 : Math.max(0, 1 - elapsedSinceMount / windowMs);
 
       for (const name of activeLeadsRef.current) {
         const canvas = canvasRefs.current[name];

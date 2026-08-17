@@ -29,22 +29,35 @@ function beatEnvelope(phase: number): number {
   return 0;
 }
 
+// Data-buffer constants — must match rhythmGenerators.ts / WaveformCanvas.tsx
+const LOOP_MS  = 15000; // ms per data loop
+const SAMPLES  = 900;   // samples per loop
+
 function getBeatStrength(now: number, heartRate: number, rhythmType: RhythmType): number {
   if (rhythmType === "VF") {
+    // VF: fibrillatory quiver — keep as absolute-clock noise (no beat phase)
     return 0.07 + 0.11 * Math.abs(Math.sin(now * 0.011)) + 0.07 * Math.abs(Math.sin(now * 0.0082 + 1.3));
   }
   if (rhythmType === "PEA") return 0;
-  const beatMs = 60000 / heartRate;
+
+  // Derive beat phase from the same 15-second data-buffer time base used by the
+  // canvas renderers.  This keeps the heart animation sample-locked with the ECG
+  // and ABP sweeps regardless of HR or how long the page has been running.
+  const bs     = SAMPLES / heartRate * 60; // samples per beat = 3600 / HR
+  const sample = (now % LOOP_MS) / LOOP_MS * SAMPLES;
+
   let phase: number;
   if (rhythmType === "AF") {
-    const n   = Math.floor(now / beatMs);
-    const irr = 0.18 * Math.sin(n * 1.6180339);
-    phase = (now % (beatMs * (1 + irr))) / (beatMs * (1 + irr));
+    const beatIdx = Math.floor(sample / bs);
+    const irr     = 0.18 * Math.sin(beatIdx * 1.6180339);
+    const bsIrr   = bs * (1 + irr);
+    phase = (sample % bsIrr) / bsIrr;
   } else {
-    phase = (now % beatMs) / beatMs;
+    phase = (sample % bs) / bs;
   }
+
   let str = beatEnvelope(phase);
-  if (rhythmType === "PVC" && Math.floor(now / beatMs) % 2 === 1) str *= 0.22;
+  if (rhythmType === "PVC" && Math.floor(sample / bs) % 2 === 1) str *= 0.22;
   return str;
 }
 
