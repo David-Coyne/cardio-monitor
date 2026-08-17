@@ -252,7 +252,7 @@ export function Lead3ECG({
           3-LEAD
         </span>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ width: "clamp(3rem, 6vw, 5rem)", flexShrink: 0 }}>
           <MonitorDropdown
             options={PRESETS.map((p, i) => ({ value: String(i), label: p.short }))}
             value={String(presetIdx)}
