@@ -139,46 +139,56 @@ export function WaveformCanvas({
       const d = dataRef.current;
       const currentSampleIndex = Math.floor(progress * d.length);
 
-      // Maps each canvas x-pixel back to its data-buffer sample position.
-      const sampleAt = (x: number): number => {
-        const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
-        const idx    = (currentSampleIndex - offset + d.length) % d.length;
-        const val    = d[idx];
-        const norm   = (val - minY) / (maxY - minY);
-        return height - norm * height * 0.85 - height * 0.075;
-      };
+      // Sample-by-sample rendering with quadratic bezier smoothing.
+      // Avoids the staircase effect that occurs when samplesOnScreen < canvas width
+      // (the old pixel loop assigned multiple pixels to the same sample → flat steps).
+      const pixPerSample = width / samplesOnScreen;
 
-      // === Single-colour draw ===
-      const drawSingleColour = (alpha: number, lw: number) => {
+      const drawSmooth = (alpha: number, lw: number) => {
+        const runs: { x: number; y: number }[][] = [];
+        let run:    { x: number; y: number }[]   = [];
+
+        for (let s = 0; s < samplesOnScreen; s++) {
+          const sOffset = samplesOnScreen - 1 - s;
+          const x       = ((writeX - sOffset * pixPerSample) % width + width) % width;
+          const xInt    = Math.min(Math.round(x), width - 1);
+
+          if (shouldSkip(xInt)) {
+            if (run.length > 0) { runs.push(run); run = []; }
+            continue;
+          }
+
+          const idx  = (currentSampleIndex - sOffset + d.length) % d.length;
+          const norm = (d[idx] - minY) / (maxY - minY);
+          const y    = height - norm * height * 0.85 - height * 0.075;
+          run.push({ x, y });
+        }
+        if (run.length > 0) runs.push(run);
+
         ctx.save();
         ctx.strokeStyle = color;
         ctx.globalAlpha = alpha;
         ctx.lineWidth   = lw;
         ctx.lineJoin    = 'round';
         ctx.lineCap     = 'round';
-        let segStart = -1;
 
-        const flush = (xEnd: number) => {
-          if (segStart < 0 || xEnd <= segStart) return;
+        for (const pts of runs) {
+          if (pts.length < 2) continue;
           ctx.beginPath();
-          for (let x = segStart; x < xEnd; x++) {
-            const y = sampleAt(x);
-            if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length - 1; i++) {
+            const midX = (pts[i].x + pts[i + 1].x) / 2;
+            const midY = (pts[i].y + pts[i + 1].y) / 2;
+            ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
           }
+          ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
           ctx.stroke();
-          segStart = -1;
-        };
-
-        for (let x = 0; x < width; x++) {
-          if (shouldSkip(x)) { flush(x); continue; }
-          if (segStart < 0) segStart = x;
         }
-        flush(width);
         ctx.restore();
       };
 
-      drawSingleColour(0.18, 5);
-      drawSingleColour(1.0,  1.8);
+      drawSmooth(0.18, 5);
+      drawSmooth(1.0,  1.8);
 
       animationFrameId = requestAnimationFrame(render);
     };

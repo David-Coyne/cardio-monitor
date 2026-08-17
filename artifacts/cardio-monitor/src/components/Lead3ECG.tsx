@@ -162,50 +162,59 @@ export function Lead3ECG({
           return false;
         };
 
-        const sampleAt = (x: number): number => {
-          const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
-          const idx    = (currentSampleIndex - offset + data.length) % data.length;
-          const val    = data[idx];
-          const norm   = (val - MIN_Y) / (MAX_Y - MIN_Y);
-          return height - norm * height * 0.8 - height * 0.1;
-        };
-
         const magnitude    = getLeadIschaemiaMagnitude(ischaemiaRef.current, name);
         const hasIschaemia = Math.abs(magnitude) > 0.05;
         const strokeColor  = hasIschaemia
           ? (magnitude > 0.05 ? "#ffb347" : "#ff5f5f")
           : colorRef.current;
 
-        const drawSingleColour = (alpha: number, lw: number) => {
+        const pixPerSample = width / samplesOnScreen;
+
+        const drawSmooth = (alpha: number, lw: number) => {
+          const runs: { x: number; y: number }[][] = [];
+          let run:    { x: number; y: number }[]   = [];
+
+          for (let s = 0; s < samplesOnScreen; s++) {
+            const sOffset = samplesOnScreen - 1 - s;
+            const x       = ((writeX - sOffset * pixPerSample) % width + width) % width;
+            const xInt    = Math.min(Math.round(x), width - 1);
+
+            if (shouldSkip(xInt)) {
+              if (run.length > 0) { runs.push(run); run = []; }
+              continue;
+            }
+
+            const idx  = (currentSampleIndex - sOffset + data.length) % data.length;
+            const norm = (data[idx] - MIN_Y) / (MAX_Y - MIN_Y);
+            const y    = height - norm * height * 0.8 - height * 0.1;
+            run.push({ x, y });
+          }
+          if (run.length > 0) runs.push(run);
+
           ctx.save();
           ctx.strokeStyle = strokeColor;
           ctx.globalAlpha = alpha;
           ctx.lineWidth   = lw;
           ctx.lineJoin    = "round";
           ctx.lineCap     = "round";
-          let segStart = -1;
 
-          const flush = (xEnd: number) => {
-            if (segStart < 0 || xEnd <= segStart) return;
+          for (const pts of runs) {
+            if (pts.length < 2) continue;
             ctx.beginPath();
-            for (let x = segStart; x < xEnd; x++) {
-              const y = sampleAt(x);
-              if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) {
+              const midX = (pts[i].x + pts[i + 1].x) / 2;
+              const midY = (pts[i].y + pts[i + 1].y) / 2;
+              ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
             }
+            ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
             ctx.stroke();
-            segStart = -1;
-          };
-
-          for (let x = 0; x < width; x++) {
-            if (shouldSkip(x)) { flush(x); continue; }
-            if (segStart < 0) segStart = x;
           }
-          flush(width);
           ctx.restore();
         };
 
-        drawSingleColour(0.18, 3);
-        drawSingleColour(1.0,  1.4);
+        drawSmooth(0.18, 3);
+        drawSmooth(1.0,  1.4);
       }
 
       animationFrameId = requestAnimationFrame(render);
