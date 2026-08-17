@@ -245,6 +245,23 @@ export default function Monitor() {
     }
   };
 
+  // Long-press repeat for HR buttons
+  const lpTimeout  = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const lpInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startHrRepeat = (delta: number) => {
+    if (isVF) return;
+    handleHrStep(delta);                             // fire immediately on press
+    lpTimeout.current = setTimeout(() => {
+      lpInterval.current = setInterval(() => handleHrStep(delta), 80);
+    }, 450);
+  };
+
+  const stopHrRepeat = () => {
+    if (lpTimeout.current  != null) { clearTimeout(lpTimeout.current);   lpTimeout.current  = null; }
+    if (lpInterval.current != null) { clearInterval(lpInterval.current); lpInterval.current = null; }
+  };
+
   // ── Hamburger menu overlay ──────────────────────────────────────────────────
   const hamburgerBtn = (
     <button
@@ -436,8 +453,9 @@ export default function Monitor() {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "clamp(3px,0.5vh,6px) clamp(8px,1.2vw,14px)", border: "1px solid rgba(0,255,65,0.25)", background: "rgba(0,255,65,0.04)", borderRadius: "4px", flexShrink: 0 }}>
       <span style={{ fontSize: "clamp(0.45rem,0.75vw,0.7rem)", letterSpacing: "0.15em", color: "#6b7280" }}>SET HR</span>
       <div style={{ display: "flex", alignItems: "center", gap: "clamp(4px,0.6vw,8px)" }}>
-        <button data-testid="button-hr-decrease" onClick={() => handleHrStep(-1)} disabled={isVF}
-          style={{ width: "clamp(18px,2.2vw,30px)", height: "clamp(18px,2.2vw,30px)", borderRadius: 3, fontWeight: "bold", fontSize: "clamp(0.65rem,1.2vw,1.1rem)", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>−</button>
+        <button data-testid="button-hr-decrease" disabled={isVF}
+          onPointerDown={() => startHrRepeat(-1)} onPointerUp={stopHrRepeat} onPointerLeave={stopHrRepeat} onPointerCancel={stopHrRepeat}
+          style={{ width: "clamp(18px,2.2vw,30px)", height: "clamp(18px,2.2vw,30px)", borderRadius: 3, fontWeight: "bold", fontSize: "clamp(0.65rem,1.2vw,1.1rem)", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer", userSelect: "none" }}>−</button>
         <input
           data-testid="input-heart-rate"
           type="number" min={rhythmCfg.hrMin} max={rhythmCfg.hrMax}
@@ -450,8 +468,9 @@ export default function Monitor() {
           onKeyDown={e => { if (e.key === "Enter") { commitHrDraft(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { setHrDraft(null); (e.target as HTMLInputElement).blur(); } }}
           style={{ width: "clamp(36px,4vw,56px)", textAlign: "center", fontSize: "clamp(0.85rem,1.5vw,1.4rem)", fontWeight: "bold", background: "transparent", outline: "none", color: "#00ff41", MozAppearance: "textfield" } as React.CSSProperties}
         />
-        <button data-testid="button-hr-increase" onClick={() => handleHrStep(+1)} disabled={isVF}
-          style={{ width: "clamp(18px,2.2vw,30px)", height: "clamp(18px,2.2vw,30px)", borderRadius: 3, fontWeight: "bold", fontSize: "clamp(0.65rem,1.2vw,1.1rem)", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer" }}>+</button>
+        <button data-testid="button-hr-increase" disabled={isVF}
+          onPointerDown={() => startHrRepeat(+1)} onPointerUp={stopHrRepeat} onPointerLeave={stopHrRepeat} onPointerCancel={stopHrRepeat}
+          style={{ width: "clamp(18px,2.2vw,30px)", height: "clamp(18px,2.2vw,30px)", borderRadius: 3, fontWeight: "bold", fontSize: "clamp(0.65rem,1.2vw,1.1rem)", color: "#00ff41", background: "rgba(0,255,65,0.1)", border: "1px solid rgba(0,255,65,0.3)", cursor: isVF ? "default" : "pointer", userSelect: "none" }}>+</button>
       </div>
       <span style={{ fontSize: "clamp(0.42rem,0.7vw,0.62rem)", color: "#00ff41", opacity: 0.6, whiteSpace: "nowrap" }}>
         {isVF ? "N/A" : `${rhythmCfg.hrMin}–${rhythmCfg.hrMax} bpm`}
