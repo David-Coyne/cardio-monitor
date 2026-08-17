@@ -11,8 +11,6 @@ interface Lead12ECGProps {
   ischaemiaZone: IschaemiaZone;
   color?: string;
   paused?: boolean;
-  beatPalette?: readonly string[] | null;
-  beatSamples?: number;
 }
 
 const LEAD_GRID: Lead12Name[] = [
@@ -32,14 +30,13 @@ const WINDOW_SECONDS  = 3.4;
 const MIN_Y = -1.6;
 const MAX_Y =  1.6;
 
-export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false, beatPalette, beatSamples: beatSamplesProp }: Lead12ECGProps) {
+export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false }: Lead12ECGProps) {
   const leads = useMemo(() => generate12LeadSnapshot(hr, ischaemiaZone), [hr, ischaemiaZone]);
   const canvasRefs       = useRef<Partial<Record<Lead12Name, HTMLCanvasElement | null>>>({});
   const pausedRef        = useRef(paused);
   const frozenAtRef      = useRef<number | null>(null);
   const frozenRawTimeRef = useRef<number | null>(null);
   const birthRawTimeRef  = useRef<number | null>(null);
-  const beatPaletteRef   = useRef<readonly string[] | null>(beatPalette ?? null);
   // Refs so HR / ischaemia changes don't restart the sweep
   const leadsRef         = useRef(leads);
   const ischaemiaRef     = useRef(ischaemiaZone);
@@ -47,7 +44,6 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
   const colorRef         = useRef(color);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
-  useEffect(() => { beatPaletteRef.current = beatPalette ?? null; }, [beatPalette]);
   useEffect(() => { leadsRef.current = leads; }, [leads]);
   useEffect(() => { ischaemiaRef.current = ischaemiaZone; }, [ischaemiaZone]);
   useEffect(() => { hrRef.current = hr; }, [hr]);
@@ -120,8 +116,6 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
 
         const samplesOnScreen    = Math.floor(data.length * (WINDOW_SECONDS / (TOTAL_DURATION / 1000)));
         const currentSampleIndex = Math.floor(progress * data.length);
-        const beatSamples        = beatSamplesProp ?? Math.round(data.length / Math.max(1, Math.round(hrRef.current * (TOTAL_DURATION / 1000) / 60)));
-
         const writeX  = Math.floor(sweepFraction * width);
         const eraserW = Math.max(8, Math.floor(width * 0.06));
         const unwrittenRegionSz = Math.ceil(unwrittenFraction * width);
@@ -146,80 +140,36 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
           ? (magnitude > 0.05 ? "#ffb347" : "#ff5f5f")
           : colorRef.current;
 
-        const pal = beatPaletteRef.current;
+        const drawSingleColour = (alpha: number, lw: number) => {
+          ctx.save();
+          ctx.strokeStyle = strokeColor;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth   = lw;
+          ctx.lineJoin    = 'round';
+          ctx.lineCap     = 'round';
+          let segStart = -1;
 
-        if (pal && pal.length > 0 && !hasIschaemia) {
-          // === Per-beat colouring for normal leads ===
-          const drawBeatColoured = (alpha: number, lw: number) => {
-            let segStart  = -1;
-            let segColour = '';
-
-            const flush = (xEnd: number) => {
-              if (segStart < 0 || xEnd <= segStart) return;
-              ctx.save();
-              ctx.strokeStyle = segColour;
-              ctx.globalAlpha = alpha;
-              ctx.lineWidth   = lw;
-              ctx.lineJoin    = 'round';
-              ctx.lineCap     = 'round';
-              ctx.beginPath();
-              for (let x = segStart; x < xEnd; x++) {
-                const y = sampleAt(x);
-                if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-              }
-              ctx.stroke();
-              ctx.restore();
-              segStart  = -1;
-              segColour = '';
-            };
-
-            for (let x = 0; x < width; x++) {
-              if (shouldSkip(x)) { flush(x); continue; }
-              const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
-              const sIdx   = (currentSampleIndex - offset + data.length) % data.length;
-              const beatN  = Math.floor(sIdx / beatSamples);
-              const col    = pal[((beatN % pal.length) + pal.length) % pal.length];
-              if (col !== segColour || segStart < 0) { flush(x); segStart = x; segColour = col; }
+          const flush = (xEnd: number) => {
+            if (segStart < 0 || xEnd <= segStart) return;
+            ctx.beginPath();
+            for (let x = segStart; x < xEnd; x++) {
+              const y = sampleAt(x);
+              if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
-            flush(width);
+            ctx.stroke();
+            segStart = -1;
           };
 
-          drawBeatColoured(0.18, 3);
-          drawBeatColoured(1.0,  1.1);
+          for (let x = 0; x < width; x++) {
+            if (shouldSkip(x)) { flush(x); continue; }
+            if (segStart < 0) segStart = x;
+          }
+          flush(width);
+          ctx.restore();
+        };
 
-        } else {
-          // === Single-colour draw ===
-          const drawSingleColour = (alpha: number, lw: number) => {
-            ctx.save();
-            ctx.strokeStyle = strokeColor;
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth   = lw;
-            ctx.lineJoin    = 'round';
-            ctx.lineCap     = 'round';
-            let segStart = -1;
-
-            const flush = (xEnd: number) => {
-              if (segStart < 0 || xEnd <= segStart) return;
-              ctx.beginPath();
-              for (let x = segStart; x < xEnd; x++) {
-                const y = sampleAt(x);
-                if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-              }
-              ctx.stroke();
-              segStart = -1;
-            };
-
-            for (let x = 0; x < width; x++) {
-              if (shouldSkip(x)) { flush(x); continue; }
-              if (segStart < 0) segStart = x;
-            }
-            flush(width);
-            ctx.restore();
-          };
-
-          drawSingleColour(0.18, 3);
-          drawSingleColour(1.0,  1.1);
-        }
+        drawSingleColour(0.18, 3);
+        drawSingleColour(1.0,  1.1);
       }
 
       animationFrameId = requestAnimationFrame(render);

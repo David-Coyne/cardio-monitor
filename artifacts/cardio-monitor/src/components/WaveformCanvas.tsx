@@ -3,9 +3,6 @@ import { useEffect, useRef } from "react";
 interface WaveformCanvasProps {
   data: number[];
   color: string;
-  beatColor?: string | null;
-  beatPalette?: readonly string[] | null;
-  beatSamples?: number;
   label: string;
   gridColor?: string;
   value: string;
@@ -26,9 +23,6 @@ const TOTAL_DURATION = 15000; // 15-second loop in ms
 export function WaveformCanvas({
   data,
   color,
-  beatColor,
-  beatPalette,
-  beatSamples,
   label,
   gridColor = "#001800",
   value,
@@ -47,16 +41,10 @@ export function WaveformCanvas({
   const frozenAtRef      = useRef<number | null>(null);  // elapsed (data loop)
   const frozenRawTimeRef = useRef<number | null>(null);  // raw rAF time (sweep)
   const birthRawTimeRef  = useRef<number | null>(null);  // raw time on first frame
-  const activeColorRef   = useRef<string>(beatColor ?? color);
-  const beatPaletteRef   = useRef<readonly string[] | null>(beatPalette ?? null);
-  const beatSamplesRef   = useRef<number>(beatSamples ?? 0);
   // Keep data behind a ref so HR changes don't restart the sweep
   const dataRef          = useRef<number[]>(data);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
-  useEffect(() => { activeColorRef.current = beatColor ?? color; }, [beatColor, color]);
-  useEffect(() => { beatPaletteRef.current = beatPalette ?? null; }, [beatPalette]);
-  useEffect(() => { beatSamplesRef.current = beatSamples ?? 0; }, [beatSamples]);
   useEffect(() => { dataRef.current = data; }, [data]);
 
   useEffect(() => {
@@ -160,81 +148,37 @@ export function WaveformCanvas({
         return height - norm * height * 0.85 - height * 0.075;
       };
 
-      const pal = beatPaletteRef.current;
-      const bs  = beatSamplesRef.current;
+      // === Single-colour draw ===
+      const drawSingleColour = (alpha: number, lw: number) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth   = lw;
+        ctx.lineJoin    = 'round';
+        ctx.lineCap     = 'round';
+        let segStart = -1;
 
-      if (pal && pal.length > 0 && bs > 0) {
-        // === Per-beat colouring ===
-        const drawBeatColoured = (alpha: number, lw: number) => {
-          let segStart  = -1;
-          let segColour = '';
-
-          const flush = (xEnd: number) => {
-            if (segStart < 0 || xEnd <= segStart) return;
-            ctx.save();
-            ctx.strokeStyle = segColour;
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth   = lw;
-            ctx.lineJoin    = 'round';
-            ctx.lineCap     = 'round';
-            ctx.beginPath();
-            for (let x = segStart; x < xEnd; x++) {
-              const y = sampleAt(x);
-              if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-            ctx.restore();
-            segStart  = -1;
-            segColour = '';
-          };
-
-          for (let x = 0; x < width; x++) {
-            if (shouldSkip(x)) { flush(x); continue; }
-            const offset = Math.floor(((writeX - x + width) % width) / width * samplesOnScreen);
-            const sIdx   = (currentSampleIndex - offset + d.length) % d.length;
-            const beatN  = Math.floor(sIdx / bs);
-            const col    = pal[((beatN % pal.length) + pal.length) % pal.length];
-            if (col !== segColour || segStart < 0) { flush(x); segStart = x; segColour = col; }
+        const flush = (xEnd: number) => {
+          if (segStart < 0 || xEnd <= segStart) return;
+          ctx.beginPath();
+          for (let x = segStart; x < xEnd; x++) {
+            const y = sampleAt(x);
+            if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
-          flush(width);
+          ctx.stroke();
+          segStart = -1;
         };
 
-        drawBeatColoured(0.18, 5);   // glow first
-        drawBeatColoured(1.0,  1.8); // main on top
+        for (let x = 0; x < width; x++) {
+          if (shouldSkip(x)) { flush(x); continue; }
+          if (segStart < 0) segStart = x;
+        }
+        flush(width);
+        ctx.restore();
+      };
 
-      } else {
-        // === Single-colour draw ===
-        const drawSingleColour = (alpha: number, lw: number) => {
-          ctx.save();
-          ctx.strokeStyle = activeColorRef.current;
-          ctx.globalAlpha = alpha;
-          ctx.lineWidth   = lw;
-          ctx.lineJoin    = 'round';
-          ctx.lineCap     = 'round';
-          let segStart = -1;
-
-          const flush = (xEnd: number) => {
-            if (segStart < 0 || xEnd <= segStart) return;
-            ctx.beginPath();
-            for (let x = segStart; x < xEnd; x++) {
-              const y = sampleAt(x);
-              if (x === segStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-            segStart = -1;
-          };
-
-          for (let x = 0; x < width; x++) {
-            if (shouldSkip(x)) { flush(x); continue; }
-            if (segStart < 0) segStart = x;
-          }
-          flush(width);
-          ctx.restore();
-        };
-
-        drawSingleColour(0.18, 5);
-        drawSingleColour(1.0,  1.8);
-      }
+      drawSingleColour(0.18, 5);
+      drawSingleColour(1.0,  1.8);
 
       animationFrameId = requestAnimationFrame(render);
     };
@@ -256,13 +200,13 @@ export function WaveformCanvas({
     >
       <div
         className="absolute top-1.5 left-2 z-10 font-mono font-bold tracking-widest"
-        style={{ color: beatColor ?? color, fontSize: labelFontSize, transition: "color 0.3s" }}
+        style={{ color, fontSize: labelFontSize }}
       >
         {label}
       </div>
       <div
         className="absolute top-1 right-3 z-10 font-mono flex items-baseline gap-1"
-        style={{ color: beatColor ?? color, transition: "color 0.3s" }}
+        style={{ color }}
       >
         <span style={{ fontSize: valueFontSize, fontWeight: "bold", lineHeight: 1 }}>{value}</span>
         <span style={{ fontSize: unitFontSize, opacity: 0.8 }}>{unit}</span>
