@@ -537,13 +537,15 @@ export default function Monitor() {
               {pauseBtn}
             </div>
             <div style={{ padding: "6px 8px", borderTop: "1px solid #0d2a0d", flexShrink: 0 }}>
-              <MonitorDropdown
-                options={rhythmOptions}
-                value={rhythmType}
-                onChange={v => handleRhythmChange(v as RhythmType)}
-                color={isLethal ? "#ff5555" : "#00ff41"}
-                openUp
-              />
+              <div style={{ maxWidth: "13rem" }}>
+                <MonitorDropdown
+                  options={rhythmOptions}
+                  value={rhythmType}
+                  onChange={v => handleRhythmChange(v as RhythmType)}
+                  color={isLethal ? "#ff5555" : "#00ff41"}
+                  openUp
+                />
+              </div>
             </div>
           </div>
 
@@ -701,12 +703,14 @@ export default function Monitor() {
         className="px-2 py-1"
         style={{ borderBottom: "1px solid #0d2a0d", flexShrink: 0 }}
       >
-        <MonitorDropdown
-          options={rhythmOptions}
-          value={rhythmType}
-          onChange={v => handleRhythmChange(v as RhythmType)}
-          color={isLethal ? "#ff5555" : "#00ff41"}
-        />
+        <div style={{ maxWidth: "16rem" }}>
+          <MonitorDropdown
+            options={rhythmOptions}
+            value={rhythmType}
+            onChange={v => handleRhythmChange(v as RhythmType)}
+            color={isLethal ? "#ff5555" : "#00ff41"}
+          />
+        </div>
       </div>
 
       {/* ── Heart ───────────────────────────────────────────────────────────── */}
