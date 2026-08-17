@@ -148,6 +148,11 @@ export function Lead12ECG({ hr, ischaemiaZone, color = "#00ff41", paused = false
               continue;
             }
 
+            // Detect wrap-around: x jumps backward by more than half the canvas width.
+            if (run.length > 0 && x < run[run.length - 1].x - width / 2) {
+              runs.push(run); run = [];
+            }
+
             const idx  = (currentSampleIndex - sOffset + data.length) % data.length;
             const norm = (data[idx] - MIN_Y) / (MAX_Y - MIN_Y);
             const y    = height - norm * height * 0.8 - height * 0.1;

@@ -158,6 +158,11 @@ export function WaveformCanvas({
             continue;
           }
 
+          // Detect wrap-around: x jumps backward by more than half the canvas width.
+          if (run.length > 0 && x < run[run.length - 1].x - width / 2) {
+            runs.push(run); run = [];
+          }
+
           const idx  = (currentSampleIndex - sOffset + d.length) % d.length;
           const norm = (d[idx] - minY) / (maxY - minY);
           const y    = height - norm * height * 0.85 - height * 0.075;
